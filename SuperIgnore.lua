@@ -677,6 +677,8 @@ SI_GetNumIgnores_Old					= nil
 SI_GetSelectedIgnore_Old				= nil
 SI_SetSelectedIgnore_Old				= nil
 SI_TradeFrame_OnEvent_Old				= nil
+SI_InitiateTrade_Old					= nil
+SI_DropItemOnUnit_Old					= nil
 SI_StaticPopup_Show_Old					= nil
 SI_ChatFrame_OnEvent_Old				= nil
 SI_WIM_ChatFrame_OnEvent_Old			= nil
@@ -940,11 +942,43 @@ SI_StaticPopup_Show_New = function(which, text_arg1, text_arg2, data)
 	return SI_StaticPopup_Show_Old(which, text_arg1, text_arg2, data)
 end
 
+-- Trades I start myself are never auto-cancelled: remember who I asked to trade,
+-- then let the trade window with that player through until it closes.
+local tradeRequestName, tradeRequestTime, tradeAllowedName = nil, 0, nil
+
+local rememberTradeRequest = function(unit)
+	local name = unit and UnitIsPlayer(unit) and UnitName(unit)
+	if name then
+		tradeRequestName, tradeRequestTime = name, GetTime()
+	end
+end
+
+SI_InitiateTrade_New = function(unit)
+	rememberTradeRequest(unit)
+	return SI_InitiateTrade_Old(unit)
+end
+
+SI_DropItemOnUnit_New = function(unit)
+	if CursorHasItem() then
+		rememberTradeRequest(unit)
+	end
+	return SI_DropItemOnUnit_Old(unit)
+end
+
 SI_TradeFrame_OnEvent_New = function()
+	if event == "TRADE_CLOSED" then
+		tradeAllowedName = nil
+	elseif event == "TRADE_SHOW" then
+		local name = UnitName("NPC")
+		-- Only a recent request counts, so a stale one can't let that player's own trade through later
+		tradeAllowedName = (name and name == tradeRequestName and GetTime() - tradeRequestTime < 10) and name or nil
+		tradeRequestName = nil
+	end
+
 	if SI_Global.BanOptTrade then
 		if event == "TRADE_SHOW" or event == "TRADE_UPDATE" then
 			local name = UnitName("NPC")
-			if SI_FilterIsPlayerIgnored(name) then
+			if name ~= tradeAllowedName and SI_FilterIsPlayerIgnored(name) then
 				CloseTrade()
 				SI_LogIgnore(SS.LogTrade, name)
 				return
@@ -1020,6 +1054,12 @@ SI_HookFunctions = function()
 
 	SI_TradeFrame_OnEvent_Old	= TradeFrame_OnEvent
 	TradeFrame_OnEvent			= SI_TradeFrame_OnEvent_New
+
+	SI_InitiateTrade_Old		= InitiateTrade
+	InitiateTrade				= SI_InitiateTrade_New
+
+	SI_DropItemOnUnit_Old		= DropItemOnUnit
+	DropItemOnUnit				= SI_DropItemOnUnit_New
 
 	SI_ChatFrame_OnEvent_Old	= ChatFrame_OnEvent
 	ChatFrame_OnEvent			= SI_ChatFrame_OnEvent_New
