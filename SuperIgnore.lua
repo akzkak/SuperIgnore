@@ -103,6 +103,74 @@ SI_ModsFramePad = 0
 
 SI_Log = {}
 
+------------- pfUI Skin
+
+-- pfUI api table while pfUI skinning is active, nil otherwise
+SI_PF = nil
+-- Every skinnable widget, so the skin can be applied whenever pfUI becomes ready
+SI_SkinWidgets = {}
+
+local skinApply = function(w)
+	local kind, obj = w[1], w[2]
+	if kind == "frame" then
+		local _, border = SI_PF.GetBorderSize()
+		local parent = w[3]
+		local anchor = (parent == IgnoreListFrame and FriendsFrame.backdrop) or parent.backdrop or parent
+		obj:SetBackdrop(nil)
+		SI_PF.CreateBackdrop(obj, nil, nil, .75)
+		SI_PF.CreateBackdropShadow(obj)
+		obj:ClearAllPoints()
+		obj:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 2 * border + 2, anchor == parent and 0 or -border)
+	elseif kind == "font" then
+		obj:SetFont(pfUI.font_default, w[3] or pfUI_config.global.font_size, "OUTLINE")
+	elseif kind == "checkbox" then
+		SI_PF.SkinCheckbox(obj)
+	elseif kind == "button" then
+		SI_PF.SkinButton(obj)
+	elseif kind == "dropdown" then
+		SI_PF.SkinDropDown(obj, nil, nil, nil, true)
+	elseif kind == "scroll" then
+		SI_PF.SkinScrollbar(getglobal(obj:GetName() .. "ScrollBar"))
+	end
+end
+
+-- kind: frame (arg = parent), font (arg = pfUI font size or nil for pfUI default), checkbox, button, dropdown, scroll
+SI_Skin = function(kind, obj, arg)
+	local w = {kind, obj, arg}
+	table.insert(SI_SkinWidgets, w)
+	if SI_PF then skinApply(w) end
+end
+
+local skinActivate = function()
+	if SI_PF then return end
+	SI_PF = pfUI.api
+	for _, w in SI_SkinWidgets do
+		skinApply(w)
+	end
+	if IgnoreListFrame:IsVisible() then SI_SkinPlaceShowButton(SI_OpenButton) end
+end
+
+-- Safe to call repeatedly; pfUI may load before or after SuperIgnore
+SI_SkinDetect = function()
+	if SI_PF or not (pfUI and pfUI.api and pfUI.api.CreateBackdrop and pfUI.RegisterSkin and pfUI_config) then return end
+	-- Registered as a pfUI skin so it can be toggled in pfUI's settings
+	if pfUI_config.disabled and pfUI_config.disabled["skin_SuperIgnore"] == "1" then return end
+	-- Runs immediately if pfUI finished booting, otherwise once it does.
+	-- pfUI setfenv()s skin functions into its own environment, so only call through an upvalue here.
+	pfUI:RegisterSkin("SuperIgnore", function() skinActivate() end)
+end
+
+-- Aligns the SuperIgnore toggle with pfUI's relocated ignore list tabs/buttons
+SI_SkinPlaceShowButton = function(b)
+	if not (SI_PF and b and FriendsFrame.backdrop and IgnoreFrameToggleTab1 and FriendsFrameStopIgnoreButton) then return end
+	local right, top = FriendsFrameStopIgnoreButton:GetRight(), IgnoreFrameToggleTab1:GetTop()
+	local left, ptop = IgnoreListFrame:GetLeft(), IgnoreListFrame:GetTop()
+	if not (right and top and left and ptop) then return end
+	b:SetHeight(IgnoreFrameToggleTab1:GetHeight())
+	b:ClearAllPoints()
+	b:SetPoint("TOPRIGHT", IgnoreListFrame, "TOPLEFT", right - left, top - ptop)
+end
+
 ------------- GUI Misc
 
 SI_FrameCreateFrame = function(name, width, parent, x, y)
@@ -116,6 +184,7 @@ SI_FrameCreateFrame = function(name, width, parent, x, y)
 	})
 	f:SetPoint("TOPLEFT", parent, "TOPRIGHT", x, y)
 	f:Hide()
+	SI_Skin("frame", f, parent)
 
 	return f
 end
@@ -124,24 +193,33 @@ SI_FrameCreateHeader = function(frame, text, fontSize, pad)
 	local t = frame:CreateFontString(nil, "OVERLAY", frame)
 	t:SetPoint("TOP", frame, "TOP", 0, pad)
 	t:SetFont("Fonts\\FRIZQT__.TTF", fontSize)
+	SI_Skin("font", t, fontSize)
 	t:SetTextColor(1,0.82,0)
 	t:SetText(text)
 	return t
 end
 
-SI_FrameCreateOption = function(frame, name, desc, pad, onclick)
+SI_FrameCreateCheckbox = function(name, frame, x, pad, desc)
 	local c = CreateFrame("CheckButton", name, frame, "UICheckButtonTemplate")
 	c:SetHeight(20)
 	c:SetWidth(20)
-	c:SetPoint("TOPLEFT", frame, "TOPLEFT", 15, pad)
-	c:SetScript("OnClick", function()
-		onclick(c:GetChecked())
-	end)
+	c:SetPoint("TOPLEFT", frame, "TOPLEFT", x, pad)
+	SI_Skin("checkbox", c)
 
 	local ct = frame:CreateFontString(nil, "OVERLAY", frame)
 	ct:SetPoint("LEFT", c, "RIGHT", 0, 0)
 	ct:SetFont("Fonts\\FRIZQT__.TTF", 11)
+	SI_Skin("font", ct)
 	ct:SetText(desc)
+
+	return c, ct
+end
+
+SI_FrameCreateOption = function(frame, name, desc, pad, onclick)
+	local c, ct = SI_FrameCreateCheckbox(name, frame, 15, pad, desc)
+	c:SetScript("OnClick", function()
+		onclick(c:GetChecked())
+	end)
 
 	return c, ct
 end
@@ -153,6 +231,7 @@ SI_FrameCreateButton = function(frame, text, pad, onclick)
 	b:SetPoint("TOPLEFT", frame, "TOPLEFT", 100, pad)
 	b:SetText(text)
 	b:SetScript("OnClick", onclick)
+	SI_Skin("button", b)
 
 	return b
 end
@@ -191,20 +270,12 @@ local createModUI = function(index, mod)
 		end)
 	end
 
-	local c = CreateFrame("CheckButton", "SI_ModEnable_"..mod.Name, f, "UICheckButtonTemplate")
-	c:SetHeight(20)
-	c:SetWidth(20)
-	c:SetPoint("TOPLEFT", f, "TOPLEFT", 20, SI_ModsFramePad)
+	local c = SI_FrameCreateCheckbox("SI_ModEnable_"..mod.Name, f, 20, SI_ModsFramePad, SS.TextEnabled)
 	c:SetScript("OnClick", function()
 		local checked = c:GetChecked()
 		if checked then SI_ModEnable(index) else SI_ModDisable(index) end
 	end)
 	c:SetChecked(SI_Global.Mods[mod.Name].Enabled)
-
-	local ct = f:CreateFontString(nil, "OVERLAY", f)
-	ct:SetPoint("LEFT", c, "RIGHT", 0, 0)
-	ct:SetFont("Fonts\\FRIZQT__.TTF", 11)
-	ct:SetText(SS.TextEnabled)
 	SI_ModsFramePad = SI_ModsFramePad - 20
 
 	if mod.CreateUI then
@@ -985,6 +1056,7 @@ SI_CreateOptionsFrame = function()
 		end
 	end)
 	UIDropDownMenu_SetSelectedID(dd, SI_Global.BanDuration)
+	SI_Skin("dropdown", dd)
 
 	f:SetHeight(40 + (- pad))
 end
@@ -1028,6 +1100,7 @@ SI_CreateShowButton = function()
 	b:SetWidth(130)
 	b:SetText(SS.AddonName)
 	b:SetPoint("TOPLEFT", IgnoreListFrame, "TOPLEFT", 210, -50)
+	SI_Skin("button", b)
 	b:SetScript("OnClick", function()
 		if SI_OptionsFrame:IsShown() then
 			SI_OptionsFrame:Hide()
@@ -1051,6 +1124,7 @@ SI_CreateFrames = function()
 	IgnoreListFrame:SetScript("OnShow", function()
 		if oldOnShow then oldOnShow() end
 		IgnoreList_Update()
+		SI_SkinPlaceShowButton(SI_OpenButton)
 	end)
 end
 
@@ -1066,6 +1140,7 @@ end
 SI_MainFrame = CreateFrame("frame")
 SI_MainFrame:RegisterEvent("ADDON_LOADED")
 SI_MainFrame:RegisterEvent("IGNORELIST_UPDATE")
+SI_MainFrame:RegisterEvent("PLAYER_LOGIN")
 SI_MainFrame:SetScript("OnEvent", function()
 	if event == "ADDON_LOADED" then
 		if string.lower(arg1) == SS.AddonDir then
@@ -1110,6 +1185,7 @@ SI_MainFrame:SetScript("OnEvent", function()
 			SI_RealmSpecific = SI_Global.DataByRealm[realm]
 
 			SI_HookFunctions()
+			SI_SkinDetect()
 			SI_CreateFrames()
 			SI_EnableIgnoreListRightclick()
 			SI_ApplyFilters()
@@ -1119,6 +1195,9 @@ SI_MainFrame:SetScript("OnEvent", function()
 			SI_BannedClearRelog()
 			SI_BannedCheckTimes()
 		end
+	elseif event == "PLAYER_LOGIN" then
+		-- Every addon (incl. pfUI) is loaded by now regardless of load order
+		SI_SkinDetect()
 	elseif event == "IGNORELIST_UPDATE" then
 		SI_MainFrame:UnregisterEvent("IGNORELIST_UPDATE")
 		SI_ReplaceOldIgnores()

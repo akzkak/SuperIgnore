@@ -6,6 +6,7 @@
 - You can add an ignore "reason"
 - Can show ignored messages in GUI
 - Works with Prat, WIM and WhisperFu
+- Automatically matches the [pfUI](https://github.com/brues-code/pfUI) look when pfUI is installed
 
 ## Chat Commands
 
