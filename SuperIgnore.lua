@@ -542,14 +542,21 @@ SI_FixBannedSelected = function()
 	 end
 end
 
+-- name -> index into BannedPlayers; rebuilt on the next lookup after the list changes
+local bannedIndex = nil
+
+SI_BannedIndexChanged = function()
+	bannedIndex = nil
+end
+
 SI_BannedGetIndex = function(name)
-	for index, banned in SI_RealmSpecific.BannedPlayers do
-		if banned[B_NAME] == name then
-			return index
+	if not bannedIndex then
+		bannedIndex = {}
+		for index, banned in SI_RealmSpecific.BannedPlayers do
+			bannedIndex[banned[B_NAME]] = index
 		end
 	end
-
-	return nil
+	return bannedIndex[name]
 end
 
 SI_BannedGetDuration = function(index)
@@ -569,6 +576,7 @@ SI_BannedGetName = function(index)
 end
 SI_BannedSetName = function(index, name)
 	SI_RealmSpecific.BannedPlayers[index][B_NAME] = name
+	SI_BannedIndexChanged()
 end
 
 SI_BannedSortByTime = function()
@@ -581,6 +589,7 @@ SI_BannedSortByTime = function()
 			return at < bt
 		end
 	end)
+	SI_BannedIndexChanged()
 end
 
 SI_IsChannelBanned = function(c)
@@ -624,7 +633,23 @@ SI_CheckAutoBlock = function(name, source)
 	end
 end
 
+local isChatIgnored
+
+-- Every chat frame (and WIM) asks about the same message in the same frame; answer once
+local lastTime, lastEvent, lastArg1, lastArg2, lastArg4, lastResult
+
 SI_IsChatIgnored = function(event, arg1, arg2, arg3, arg4)
+	local now = GetTime()
+	if now == lastTime and event == lastEvent and arg1 == lastArg1
+		and arg2 == lastArg2 and arg4 == lastArg4 then
+		return lastResult
+	end
+	local result = isChatIgnored(event, arg1, arg2, arg3, arg4)
+	lastTime, lastEvent, lastArg1, lastArg2, lastArg4, lastResult = now, event, arg1, arg2, arg4, result
+	return result
+end
+
+isChatIgnored = function(event, arg1, arg2, arg3, arg4)
 
 	if strsub(event, 1, 8) == "CHAT_MSG" then
 		local type = strsub(event, 10)
@@ -674,26 +699,35 @@ end
 
 ------------- Chat Bubbles
 
--- Bubbles are drawn by the client and don't know the sender, so blocked messages are
--- remembered for a few seconds and any bubble (unnamed WorldFrame child) showing that
--- exact text is made invisible. Hidden bubbles are tracked because the client recycles them.
+-- Bubbles are drawn by the client and don't know the sender, so a blocked message's
+-- text is looked for among new bubbles (unnamed WorldFrame children) for a moment, and
+-- the first bubble showing it is made invisible. Hidden bubbles are tracked because the
+-- client recycles them.
 local BUBBLE_TYPES = { SAY = true, YELL = true, PARTY = true }
-local BUBBLE_TTL = 5
+local BUBBLE_DETECT = 1
 
-local bubbleTexts = {}		-- text -> expiry time
+local bubbleTexts = {}		-- text -> time until which a bubble with it is looked for
 local bubbleHidden = {}		-- frame -> text it was hidden for
+local bubbleFonts = {}		-- frame -> its FontString, or false; cached, bubbles are reused
+local worldKids = {}		-- cached WorldFrame children, refreshed when their number changes
+local worldKidCount = -1
 local bubbleFrame = CreateFrame("Frame")
 bubbleFrame:Hide()
 
 local bubbleGetText = function(frame)
-	local regions = { frame:GetRegions() }
-	for i = 1, table.getn(regions) do
-		local r = regions[i]
-		if r:GetObjectType() == "FontString" then
-			local text = r:GetText()
-			if text then return text end
+	local font = bubbleFonts[frame]
+	if font == nil then
+		font = false
+		local regions = { frame:GetRegions() }
+		for i = 1, table.getn(regions) do
+			if regions[i]:GetObjectType() == "FontString" then
+				font = regions[i]
+				break
+			end
 		end
+		bubbleFonts[frame] = font
 	end
+	return font and font:GetText()
 end
 
 bubbleFrame:SetScript("OnUpdate", function()
@@ -720,14 +754,20 @@ bubbleFrame:SetScript("OnUpdate", function()
 	end
 
 	if next(bubbleTexts) then
-		local kids = { WorldFrame:GetChildren() }
-		for i = 1, table.getn(kids) do
-			local frame = kids[i]
+		local count = WorldFrame:GetNumChildren()
+		if count ~= worldKidCount then
+			worldKids = { WorldFrame:GetChildren() }
+			worldKidCount = count
+		end
+		for i = 1, count do
+			local frame = worldKids[i]
 			if not bubbleHidden[frame] and not frame:GetName() and frame:IsShown() then
 				local text = bubbleGetText(frame)
 				if text and bubbleTexts[text] then
 					frame:SetAlpha(0)
 					bubbleHidden[frame] = text
+					-- One bubble per message, so others saying the same stay visible
+					bubbleTexts[text] = nil
 					active = true
 				end
 			end
@@ -741,7 +781,7 @@ end)
 
 SI_BubbleBlock = function(type, text)
 	if not BUBBLE_TYPES[type] then return end
-	bubbleTexts[text] = GetTime() + BUBBLE_TTL
+	bubbleTexts[text] = GetTime() + BUBBLE_DETECT
 	bubbleFrame:Show()
 end
 
@@ -816,6 +856,7 @@ SI_AddIgnore_New = function(name, quiet, banTime, reason)
 		SI_BannedSetReason(index, reason)
 	else
 		table.insert(SI_RealmSpecific.BannedPlayers, {name, banTime, nil, reason})
+		SI_BannedIndexChanged()
 	end
 
 	SI_BannedSortByTime()
@@ -854,6 +895,7 @@ SI_DelIgnore_New = function(name, quiet)
 	local index = SI_BannedGetIndex(name)
 	if index then
 		 table.remove(SI_RealmSpecific.BannedPlayers, index)
+		 SI_BannedIndexChanged()
 		 SI_FixBannedSelected()
 		 IgnoreList_Update()
 
@@ -934,6 +976,8 @@ end)
 -- Right-aligned, dimmed duration on each ignore list row
 SI_IgnoreList_Update_Old = nil
 SI_IgnoreList_Update_New = function()
+	-- Nothing to draw while hidden; the list redraws itself when shown (SI_CreateFrames)
+	if not IgnoreListFrame:IsVisible() then return end
 	SI_IgnoreList_Update_Old()
 	local unmeasured = false
 
@@ -1366,12 +1410,17 @@ SI_LogIgnore = function(text, name, source)
 	end
 end
 
+-- Lookups into SI_Log: name .. "\n" .. text -> true, and name -> true
+local logSeen = {}
+local logNames = {}
+
 SI_LogAdd = function(text, name)
-	for _, msg in SI_Log do
-		if msg[1] == name and msg[2] == text then
-			return false
-		end
+	local key = name .. "\n" .. text
+	if logSeen[key] then
+		return false
 	end
+	logSeen[key] = true
+	logNames[name] = true
 	table.insert(SI_Log, {[1] = name, [2] = text, [3] = date("%H:%M")})
 	return true
 end
@@ -1387,12 +1436,7 @@ SI_LogGetByName = function(name)
 end
 
 SI_LogHasName = function(name)
-	for _, msg in SI_Log do
-		if msg[1] == name then
-			return true
-		end
-	end
-	return false
+	return logNames[name] or false
 end
 
 ------------- Frames
