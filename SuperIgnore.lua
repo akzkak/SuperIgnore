@@ -628,10 +628,7 @@ SI_IsChatIgnored = function(event, arg1, arg2, arg3, arg4)
 
 	if strsub(event, 1, 8) == "CHAT_MSG" then
 		local type = strsub(event, 10)
-		if type == "IGNORED" then
-			return true
-		end
-		
+
 		local source = strsub(type,1,1)
 		if type == "CHANNEL" and arg4 then
 			source = strsub(arg4,1,1)
