@@ -837,6 +837,9 @@ end
 
 SI_AddOrDelIgnore_New = function(name, quiet, banTime, reason)
 	SI_IgnoreHandled = true
+	if not name then return end
+	-- Typed names ("/ignore bob") must match the stored "Bob"
+	name = SI_FixPlayerName(name)
 	local index = SI_BannedGetIndex(name)
 	if index then
 		SI_DelIgnore_New(name, quiet)
@@ -1114,9 +1117,10 @@ SI_WhisperFu_OnReceiveWhisper_New = function()
 end
 
 SI_SendChatMessage_New = function(msg, chatType, lang, channel)
-	local name = channel
-	if chatType == "WHISPER" and SI_FilterIsPlayerIgnored(channel) then
-		if SI_CheckInteractRules(channel) then
+	-- Typed whisper targets ("/w bob") must match the stored "Bob"
+	local name = chatType == "WHISPER" and channel and SI_FixPlayerName(channel)
+	if name and SI_FilterIsPlayerIgnored(name) then
+		if SI_CheckInteractRules(name) then
 			return
 		end
 	end
