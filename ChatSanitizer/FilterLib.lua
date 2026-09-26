@@ -76,9 +76,6 @@ if not FilterLib then
 		["%.com"] = 25,
 		["%,com"] = 25,
 		[" com"] = 10,
-		["%.-o-"] = 25,
-		["%.c--"] = 25,
-		["%.--m"] = 25,
 		["dot%s*com"] = 25,
 		["dot%s*cn"] = 75,
 		["%.cn"] = 75,
@@ -125,11 +122,26 @@ if not FilterLib then
 		["3w%."] = 25,
 		["3w%,"] = 25,
 		["%d+g=%d+"] = 20,
-		["legacy-boost"] = 80,
+		["legacy%-?boost"] = 80,
 		["rnrnoo%!<"] = 80,
 		["doublemotank"] = 80,
-		["money-circle"] = 80,
+		["money%-?circle"] = 80,
 		["ovewowhaha"] = 80,
+	}
+
+	-- Common words that also appear inside normal words ("follow", "golden", "border").
+	-- These only count as whole words ("gold", not "golden").
+	FilterLib.wordOnly = {
+		["worker"] = true, ["working"] = true, ["delivery"] = true, ["deliveries"] = true,
+		["power"] = true, ["level"] = true, ["store"] = true, ["gold"] = true, ["coin"] = true,
+		["currency"] = true, ["account"] = true, ["profession"] = true, ["buy"] = true,
+		["purchase"] = true, ["sell"] = true, ["payment"] = true, ["dollar"] = true,
+		["pound"] = true, ["euro"] = true, ["offer"] = true, ["free"] = true, ["order"] = true,
+		["fast"] = true, ["cheap"] = true, ["price"] = true, ["low"] = true, ["safe"] = true,
+		["special"] = true, ["service"] = true, ["days"] = true, ["discount"] = true,
+		["code"] = true, ["banned"] = true, ["web"] = true, ["site"] = true, ["wellcome"] = true,
+		["choice"] = true, ["promotion"] = true, ["hack"] = true, ["guarantee"] = true,
+		["server"] = true, ["bonus"] = true,
 	}
 
 	function FilterLib:Filter(text)
@@ -240,9 +252,16 @@ if not FilterLib then
 		local value = 0
 		local weight = 0
 
+		-- Padded so whole-word matches work at the start and end of the text too
+		local padded = " " .. s .. " "
 		for word, value in pairs(self.words) do
 			if not wordsFound[word] then
-				local _,_,w = string.find(s, "("..word..")")
+				local _, w
+				if self.wordOnly[word] then
+					_,_,w = string.find(padded, "[^%w]("..word..")[^%w]")
+				else
+					_,_,w = string.find(s, "("..word..")")
+				end
 				if (w) then
 					weight = weight + value
 					wordsFound[word] = 1
