@@ -25,12 +25,18 @@ local phrases = {}
 
 local m = {}
 
+-- Drops non-latin characters (every UTF-8 multibyte byte), so unicode symbols or
+-- lookalike letters inserted between latin letters can't dodge a phrase
+local stripNonLatin = function(text)
+	return (string.gsub(text, "[\128-\255]", ""))
+end
+
 m.chatfilter = function(message, name, type)
 	if name and FriendLib:IsFriend(name) then
 		return false
 	end
 
-	message = strupper(message)
+	message = strupper(stripNonLatin(message))
 	for _, p in phrases do
 		-- p[2]: phrase is a Lua pattern (had wildcards), otherwise a plain substring
 		if strfind(message, p[1], 1, not p[2]) then
@@ -56,8 +62,9 @@ m.updatePhrases = function()
 	SI_ModSetVar(m.mod, "Text", text)
 	phrases = {}
 	for _, p in getlines(text) do
+		p = stripNonLatin(p)
 		-- A line of only wildcards would match every message
-		if p ~= "" and strfind(p, "[^%*%?%s]") then
+		if strfind(p, "[^%*%?%s]") then
 			local pattern, isPattern = wildcardToPattern(strupper(p))
 			table.insert(phrases, {pattern, isPattern})
 		end
@@ -105,7 +112,7 @@ end
 m.mod = {
 	["Name"] = "Custom Filter",
 	["Description"] = "Blocks all messages containing a phrase.",
-	["Help"] = "Click 'Edit' and enter one phrase per line. Use * to match any text and ? to match any single character, e.g. 'buy*gold' or 'w?w'. Players that write messages containing one of these phrases will be temporarily ignored. Friends, party and guild members are never ignored.",
+	["Help"] = "Click 'Edit' and enter one phrase per line. Use * to match any text and ? to match any single character, e.g. 'buy*gold' or 'w?w'. Non-latin characters (accents, symbols, other alphabets) are ignored in both phrases and messages. Players that write messages containing one of these phrases will be temporarily ignored. Friends, party and guild members are never ignored.",
 	["OnEnable"] = m.updatePhrases,
 	["OnDisable"] = nil,
 	["CreateUI"] = m.createUI,
