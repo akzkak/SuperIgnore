@@ -324,6 +324,10 @@ SI_BannedCheckTimesPeriodic = function()
 	if GetTime() - SI_TimeCheck_Last > 60 then
 		SI_TimeCheck_Last = GetTime()
 		SI_BannedCheckTimes()
+		-- Keep the time left current while the list stays open (minutes are the finest unit)
+		if IgnoreListFrame:IsVisible() then
+			IgnoreList_Update()
+		end
 	end
 end
 
