@@ -31,12 +31,19 @@ local stripNonLatin = function(text)
 	return (string.gsub(text, "[\128-\255]", ""))
 end
 
+-- Keeps only the visible text: "|cff1eff00|Hitem:...|h[Name]|h|r" becomes "[Name]"
+local stripLinks = function(text)
+	text = string.gsub(text, "|H.-|h(.-)|h", "%1")
+	text = string.gsub(text, "|c%x%x%x%x%x%x%x%x", "")
+	return (string.gsub(text, "|r", ""))
+end
+
 m.chatfilter = function(message, name, type)
 	if name and FriendLib:IsFriend(name) then
 		return false
 	end
 
-	message = strupper(stripNonLatin(message))
+	message = strupper(stripNonLatin(stripLinks(message)))
 	for _, p in phrases do
 		-- p[2]: phrase is a Lua pattern (had wildcards), otherwise a plain substring
 		if strfind(message, p[1], 1, not p[2]) then
