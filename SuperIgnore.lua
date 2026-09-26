@@ -35,6 +35,8 @@ local SS = {
 	["BanInvite"]			= "Invites",
 	["BanDuel"]				= "Duels",
 
+	["LogTitle"]			= "Blocked this session",
+	["LogEmpty"]			= "Nothing blocked yet.",
 	["LogDuel"]				= "[Duel]",
 	["LogTrade"]			= "[Trade]",
 	["LogInviteGuild"]		= "[Guild Invite]",
@@ -136,6 +138,8 @@ local skinApply = function(w)
 		SI_PF.SkinButton(obj)
 	elseif kind == "dropdown" then
 		SI_PF.SkinDropDown(obj, nil, nil, nil, true)
+	elseif kind == "close" then
+		SI_PF.SkinCloseButton(obj, obj:GetParent().backdrop, -6, -6)
 	elseif kind == "scroll" then
 		SI_PF.SkinScrollbar(getglobal(obj:GetName() .. "ScrollBar"))
 	end
@@ -760,15 +764,9 @@ SI_GetIgnoreName_New = function(index)
 	if banned then
 		local name = banned[B_NAME]
 		local reason = banned[B_REASON]
-		-- Friends list style "Name - Detail"; the duration is drawn separately, right-aligned
+		-- Friends list style "Name - Detail"; the duration is drawn separately, right-aligned.
+		-- The ignore list cuts the reason to the available width (SI_IgnoreList_Update_New).
 		if reason then
-			local maxLen = 30 - string.len(name)
-			if maxLen <= 5 then
-				return name
-			end
-			if string.len(reason) > maxLen then
-				reason = string.sub(reason, 1, maxLen) .. "..."
-			end
 			return name .. " |cff808080- " .. reason .. "|r"
 		end
 		return name
@@ -777,22 +775,119 @@ SI_GetIgnoreName_New = function(index)
 	end
 end
 
+-- The row's name text, which lives on the row's "$parentButtonText" child frame
+local ignoreRowNameText = function(button)
+	return getglobal(button:GetName() .. "ButtonTextName")
+end
+
+-- Offset from the row's right edge that mirrors the name's left padding,
+-- measured between the Friends/Ignore tabs (left) and the SuperIgnore button (right)
+local ignoreRowRightOffset = function(button)
+	local nameText = ignoreRowNameText(button)
+	local leftEdge = IgnoreFrameToggleTab1 and IgnoreFrameToggleTab1:GetLeft()
+	local rightEdge = SI_OpenButton and SI_OpenButton:GetRight()
+	local textLeft = nameText and nameText:GetLeft()
+	local rowRight = button:GetRight()
+	if not (leftEdge and rightEdge and textLeft and rowRight) then
+		return nil
+	end
+	return (rightEdge - (textLeft - leftEdge)) - rowRight
+end
+
+-- Cuts the reason with "..." so the row text ends before the duration column
+local ignoreRowFitText = function(nameText, banned, duration)
+	local name, reason = banned[B_NAME], banned[B_REASON]
+	local textLeft, durationLeft = nameText:GetLeft(), duration:GetLeft()
+	if not reason then return true end
+	if not (textLeft and durationLeft) then return false end
+
+	local maxWidth = durationLeft - 8 - textLeft
+	if nameText:GetStringWidth() <= maxWidth then return true end
+
+	local len = string.len(reason)
+	while len > 0 do
+		len = len - 1
+		local cut = string.gsub(string.sub(reason, 1, len), "%s+$", "")
+		nameText:SetText(name .. " |cff808080- " .. cut .. "...|r")
+		if nameText:GetStringWidth() <= maxWidth then return true end
+	end
+	nameText:SetText(name)
+	return true
+end
+
+-- Positions aren't always resolved on the frame a list first shows; retry a few frames later
+local ignoreRowRetries = 0
+local ignoreRowRetry = CreateFrame("Frame")
+ignoreRowRetry:Hide()
+ignoreRowRetry:SetScript("OnUpdate", function()
+	this:Hide()
+	IgnoreList_Update()
+end)
+
 -- Right-aligned, dimmed duration on each ignore list row
 SI_IgnoreList_Update_Old = nil
 SI_IgnoreList_Update_New = function()
 	SI_IgnoreList_Update_Old()
+	local unmeasured = false
 
 	for i = 1, IGNORES_TO_DISPLAY do
 		local button = getglobal("FriendsFrameIgnoreButton" .. i)
 		if button then
 			if not button.siDuration then
+				local log = CreateFrame("Button", nil, button)
+				log:SetWidth(14)
+				log:SetHeight(14)
+				log:SetFrameLevel(button:GetFrameLevel() + 2)
+				log:SetNormalTexture("Interface\\Buttons\\UI-GuildButton-PublicNote-Up")
+				log:SetHighlightTexture("Interface\\Buttons\\GlowStar", "ADD")
+				log:SetScript("OnEnter", function() this:SetAlpha(1) end)
+				log:SetScript("OnLeave", function() this:SetAlpha(this.alpha) end)
+				log:SetScript("OnClick", function() SI_LogFrameShow(this.name) end)
+				button.siLog = log
+
 				button.siDuration = button:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-				button.siDuration:SetPoint("RIGHT", button, "RIGHT", -8, 0)
+				button.siDuration:SetPoint("RIGHT", log, "LEFT", -4, 0)
 				button.siDuration:SetJustifyH("RIGHT")
 			end
 			local banned = SI_RealmSpecific.BannedPlayers[button:GetID()]
+
+			local offset = ignoreRowRightOffset(button)
+			if not offset then
+				offset = -8
+				if banned then unmeasured = true end
+			end
+			button.siLog:ClearAllPoints()
+			button.siLog:SetPoint("RIGHT", button, "RIGHT", offset, 0)
 			button.siDuration:SetText(banned and SI_FormatTimeNoColor(banned[B_DURATION]) or "")
+			if banned then
+				local log = button.siLog
+				log.name = banned[B_NAME]
+				-- Dim and grey when empty, full color when something was blocked
+				if SI_LogHasName(log.name) then
+					log.alpha = 1
+					log:GetNormalTexture():SetVertexColor(1, 1, 1)
+				else
+					log.alpha = .35
+					log:GetNormalTexture():SetVertexColor(.6, .6, .6)
+				end
+				if not MouseIsOver(log) then log:SetAlpha(log.alpha) end
+				log:Show()
+
+				local nameText = ignoreRowNameText(button)
+				if nameText and not ignoreRowFitText(nameText, banned, button.siDuration) then
+					unmeasured = true
+				end
+			else
+				button.siLog:Hide()
+			end
 		end
+	end
+
+	if unmeasured and ignoreRowRetries < 5 and IgnoreListFrame:IsVisible() then
+		ignoreRowRetries = ignoreRowRetries + 1
+		ignoreRowRetry:Show()
+	elseif not unmeasured then
+		ignoreRowRetries = 0
 	end
 end
 
@@ -1103,6 +1198,19 @@ SI_LogIgnore = function(text, name, source)
 	if logSuccess and SI_Global.DebugLog then
 		SI_Print("IGNORED: ["..source.."] " .. "\124cffff10f0\124Hplayer:"..name.."\124h["..name.."]\124h\124r" .. ": " .. text)
 	end
+
+	-- Light up the row's log icon
+	if logSuccess and IgnoreListFrame:IsVisible() then
+		IgnoreList_Update()
+	end
+
+	if logSuccess and SI_LogFrame and SI_LogFrame:IsShown() and SI_LogFrame.name == name then
+		if SI_LogFrame.empty then
+			SI_LogFrame.messages:Clear()
+			SI_LogFrame.empty = nil
+		end
+		SI_LogFrameAddLine(SI_Log[table.getn(SI_Log)])
+	end
 end
 
 SI_LogAdd = function(text, name)
@@ -1111,8 +1219,27 @@ SI_LogAdd = function(text, name)
 			return false
 		end
 	end
-	table.insert(SI_Log, {[1] = name, [2] = text})
+	table.insert(SI_Log, {[1] = name, [2] = text, [3] = date("%H:%M")})
 	return true
+end
+
+SI_LogGetByName = function(name)
+	local log = {}
+	for _, msg in SI_Log do
+		if msg[1] == name then
+			table.insert(log, msg)
+		end
+	end
+	return log
+end
+
+SI_LogHasName = function(name)
+	for _, msg in SI_Log do
+		if msg[1] == name then
+			return true
+		end
+	end
+	return false
 end
 
 ------------- Frames
@@ -1236,6 +1363,63 @@ SI_OptionsFrameUpdateHeight = function()
 	SI_OptionsFrame:SetHeight(28 + (- SI_OptionsFramePad))
 end
 
+SI_CreateLogFrame = function()
+	SI_LogFrame = SI_FrameCreateFrame("SI_LogFrame", 260, IgnoreListFrame, -34, -7)
+	local f = SI_LogFrame
+	f:SetHeight(300)
+
+	f.title = SI_FrameCreateHeader(f, "", 12, -15)
+
+	local sub = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	sub:SetPoint("TOP", f, "TOP", 0, -32)
+	sub:SetText(SS.LogTitle)
+
+	local close = CreateFrame("Button", "SI_LogFrameClose", f, "UIPanelCloseButton")
+	close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+	SI_Skin("close", close)
+
+	local msgs = CreateFrame("ScrollingMessageFrame", "SI_LogFrameMessages", f)
+	msgs:SetPoint("TOPLEFT", f, "TOPLEFT", 15, -50)
+	msgs:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -15, 15)
+	msgs:SetFontObject(GameFontHighlightSmall)
+	msgs:SetJustifyH("LEFT")
+	msgs:SetMaxLines(500)
+	msgs:SetFading(false)
+	msgs:EnableMouseWheel(true)
+	msgs:SetScript("OnMouseWheel", function()
+		if arg1 > 0 then msgs:ScrollUp() else msgs:ScrollDown() end
+	end)
+	f.messages = msgs
+end
+
+SI_LogFrameAddLine = function(msg)
+	SI_LogFrame.messages:AddMessage("|cff808080" .. msg[3] .. "|r  " .. msg[2])
+end
+
+-- Toggles the log panel for one player; shares its spot with the options panel
+SI_LogFrameShow = function(name)
+	local f = SI_LogFrame
+	if f:IsShown() and f.name == name then
+		f:Hide()
+		return
+	end
+
+	f.name = name
+	f.title:SetText(name)
+	f.messages:Clear()
+	local log = SI_LogGetByName(name)
+	for _, msg in log do
+		SI_LogFrameAddLine(msg)
+	end
+	f.empty = table.getn(log) == 0 or nil
+	if f.empty then
+		f.messages:AddMessage(SS.LogEmpty, .5, .5, .5)
+	end
+
+	SI_OptionsFrame:Hide()
+	f:Show()
+end
+
 SI_CreateShowButton = function()
 	local b = CreateFrame("Button", "SI_OpenButton", IgnoreListFrame, "UIPanelButtonTemplate")
 	b:SetHeight(21)
@@ -1247,6 +1431,7 @@ SI_CreateShowButton = function()
 		if SI_OptionsFrame:IsShown() then
 			SI_OptionsFrame:Hide()
 		else
+			SI_LogFrame:Hide()
 			SI_OptionsFrame:Show()
 		end
 	end)
@@ -1254,13 +1439,15 @@ end
 
 SI_CreateFrames = function()
 	SI_CreateOptionsFrame()
+	SI_CreateLogFrame()
 	SI_CreateShowButton()
 
 	local oldOnShow = IgnoreListFrame:GetScript("OnShow")
 	IgnoreListFrame:SetScript("OnShow", function()
 		if oldOnShow then oldOnShow() end
-		IgnoreList_Update()
+		-- Place the button first; row padding is measured against it
 		SI_SkinPlaceShowButton(SI_OpenButton)
+		IgnoreList_Update()
 	end)
 end
 
