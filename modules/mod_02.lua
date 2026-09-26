@@ -32,19 +32,34 @@ m.chatfilter = function(message, name, type)
 
 	message = strupper(message)
 	for _, p in phrases do
-		if strfind(message, p, nil, true) then
+		-- p[2]: phrase is a Lua pattern (had wildcards), otherwise a plain substring
+		if strfind(message, p[1], 1, not p[2]) then
 			return true
 		end
 	end
 	return false
 end
+
+-- "*" matches any text, "?" any single character; everything else is literal
+local wildcardToPattern = function(phrase)
+	if not strfind(phrase, "[%*%?]") then
+		return phrase, false
+	end
+	local pattern = string.gsub(phrase, "([%^%$%(%)%%%.%[%]%+%-])", "%%%1")
+	pattern = string.gsub(pattern, "%*", ".-")
+	pattern = string.gsub(pattern, "%?", ".")
+	return pattern, true
+end
+
 m.updatePhrases = function()
 	local text = box:GetText()
 	SI_ModSetVar(m.mod, "Text", text)
 	phrases = {}
 	for _, p in getlines(text) do
-		if p ~= "" then
-			table.insert(phrases, strupper(p))
+		-- A line of only wildcards would match every message
+		if p ~= "" and strfind(p, "[^%*%?%s]") then
+			local pattern, isPattern = wildcardToPattern(strupper(p))
+			table.insert(phrases, {pattern, isPattern})
 		end
 	end
 end
@@ -56,7 +71,7 @@ m.createUI = function(frame)
 	SI_FrameCreateHeader(gui, m.mod.Name, 12, -15)
 	local hint = gui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	hint:SetPoint("TOP", gui, "TOP", 0, -32)
-	hint:SetText("One phrase per line")
+	hint:SetText("One phrase per line\n* = any text, ? = any character")
 
 	box = CreateFrame("EditBox", "SI_CMB_Box", gui)
 	box:SetMultiLine(true)
@@ -71,7 +86,7 @@ m.createUI = function(frame)
 	box:SetScript("OnTextChanged", function() m.updatePhrases() end)
 
 	local scroll = CreateFrame("scrollFrame", "SI_CMB_Scroll", gui, "UIPanelScrollFrameTemplate")
-	scroll:SetPoint("TOPLEFT", gui, "TOPLEFT", 15, -50)
+	scroll:SetPoint("TOPLEFT", gui, "TOPLEFT", 15, -60)
 	scroll:SetPoint("BOTTOMRIGHT", gui, "BOTTOMRIGHT", -37, 15)
 	scroll:SetScrollChild(box)
 	SI_Skin("scroll", scroll)
@@ -90,7 +105,7 @@ end
 m.mod = {
 	["Name"] = "Custom Filter",
 	["Description"] = "Blocks all messages containing a phrase.",
-	["Help"] = "Click 'Edit' and enter one phrase per line. Players that write messages containing one of these phrases will be temporarily ignored. Friends, party and guild members are never ignored.",
+	["Help"] = "Click 'Edit' and enter one phrase per line. Use * to match any text and ? to match any single character, e.g. 'buy*gold' or 'w?w'. Players that write messages containing one of these phrases will be temporarily ignored. Friends, party and guild members are never ignored.",
 	["OnEnable"] = m.updatePhrases,
 	["OnDisable"] = nil,
 	["CreateUI"] = m.createUI,
