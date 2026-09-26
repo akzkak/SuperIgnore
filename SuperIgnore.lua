@@ -1703,8 +1703,9 @@ if getglobal("TURTLE_WOW_VERSION") == nil then
 	tinsert(UnitPopupMenus["PARTY"], 10, "IGNORE");
 end
 
-local function PostHookFunction(original, hook)	
+local function PostHookFunction(original, hook, pre)
 	return function(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)
+		if pre then pre() end
 		original(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)
 		hook(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)
 	end
@@ -1733,8 +1734,10 @@ local function SI_UnitPopup_OnClick()
 	if ( button == "IGNORE" and not SI_IgnoreHandled ) then
 		SI_AddOrDelIgnore_New(name);
 	end
-	SI_IgnoreHandled = false
 	PlaySound("UChatScrollButton");
 end
-UnitPopup_OnClick = PostHookFunction(UnitPopup_OnClick, SI_UnitPopup_OnClick)
+-- Clear the flag before the original runs, so only this click can mark it handled
+-- (ignores from /ignore, filters or expiry would otherwise leave it set)
+UnitPopup_OnClick = PostHookFunction(UnitPopup_OnClick, SI_UnitPopup_OnClick,
+	function() SI_IgnoreHandled = false end)
 ----
