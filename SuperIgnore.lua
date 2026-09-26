@@ -852,8 +852,6 @@ SI_DelIgnore_New = function(name, quiet)
 	SI_IgnoreHandled = true
 	if not name then return end
 
-	name = string.gsub(name, "^%|cff(.-)%|r ", "") -- Remove time
-	name = string.gsub(name, " %|cff(.-)%|r$", "") -- Remove reason
 	name = SI_FixPlayerName(name)
 
 	local index = SI_BannedGetIndex(name)
@@ -871,14 +869,8 @@ end
 SI_GetIgnoreName_New = function(index)
 	local banned = SI_RealmSpecific.BannedPlayers[index]
 	if banned then
-		local name = banned[B_NAME]
-		local reason = banned[B_REASON]
-		-- Friends list style "Name - Detail"; the duration is drawn separately, right-aligned.
-		-- The ignore list cuts the reason to the available width (SI_IgnoreList_Update_New).
-		if reason then
-			return name .. " |cff808080- " .. reason .. "|r"
-		end
-		return name
+		-- Plain name, since other addons compare it; the ignore list adds the reason itself
+		return banned[B_NAME]
 	else
 		return UNKNOWN
 	end
@@ -910,11 +902,13 @@ local ignoreRowRightOffset = function(button)
 	return -(textLeft - rowLeft)
 end
 
--- Cuts the reason with "..." so the row text ends before the duration column
+-- Friends list style "Name - Reason"; the reason is cut with "..." so the row text
+-- ends before the duration column
 local ignoreRowFitText = function(nameText, banned, duration)
 	local name, reason = banned[B_NAME], banned[B_REASON]
 	local textLeft, durationLeft = nameText:GetLeft(), duration:GetLeft()
 	if not reason then return true end
+	nameText:SetText(name .. " |cff808080- " .. reason .. "|r")
 	if not (textLeft and durationLeft) then return false end
 
 	local maxWidth = durationLeft - 8 - textLeft
