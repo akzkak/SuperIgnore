@@ -1110,7 +1110,9 @@ end
 SI_SendChatMessage_New = function(msg, chatType, lang, channel)
 	-- Typed whisper targets ("/w bob") must match the stored "Bob"
 	local name = chatType == "WHISPER" and channel and SI_FixPlayerName(channel)
-	if name and SI_FilterIsPlayerIgnored(name) then
+	-- Only players I ignored myself; filters (auto-block, name filters) don't stop my whispers
+	local index = name and SI_BannedGetIndex(name)
+	if index and SI_BannedGetDuration(index) ~= TI_AUTOBLOCK then
 		if SI_CheckInteractRules(name) then
 			return
 		end
