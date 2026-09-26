@@ -647,16 +647,19 @@ SI_IsChatIgnored = function(event, arg1, arg2, arg3, arg4)
 				return true
 			end
 
-			found, _, name = SI_StringFindPattern(arg1, ERR_INVITED_TO_GUILD_SS)
-			if found and name and SI_FilterIsPlayerIgnored(name) then
-				SI_LogIgnore(SS.LogInviteGuild, name, "ginvite")
-				return true
-			end
+			-- The "X has invited you..." lines that come with an invite we auto-decline
+			if SI_Global.BanOptInvite then
+				found, _, name = SI_StringFindPattern(arg1, ERR_INVITED_TO_GUILD_SS)
+				if found and name and SI_FilterIsPlayerIgnored(name) then
+					SI_LogIgnore(SS.LogInviteGuild, name, "ginvite")
+					return true
+				end
 
-			found, _, name = SI_StringFindPattern(arg1, ERR_INVITED_TO_GROUP_S)
-			if found and name and SI_FilterIsPlayerIgnored(name) then
-				SI_LogIgnore(SS.LogInviteParty, name, "invite")
-				return true
+				found, _, name = SI_StringFindPattern(arg1, ERR_INVITED_TO_GROUP_S)
+				if found and name and SI_FilterIsPlayerIgnored(name) then
+					SI_LogIgnore(SS.LogInviteParty, name, "invite")
+					return true
+				end
 			end
 		end
 
