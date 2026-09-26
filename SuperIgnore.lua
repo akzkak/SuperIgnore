@@ -1409,7 +1409,7 @@ SI_CreateOptionsFrame = function()
 
 	local createOpt = function(index, var, desc, padding, onclick)
 		local c, ct = SI_FrameCreateOption(f, "SI_Box_"..index, desc, padding, function(checked)
-			SI_Global[var] = checked
+			SI_Global[var] = checked and true or false
 			if onclick then onclick(checked) end
 		end)
 		c:SetChecked(SI_Global[var])
@@ -1614,6 +1614,49 @@ end
 
 ------------- Initialization
 
+local SETTINGS_VERSION = 1
+
+local SI_Defaults = {
+	WhisperBlock	= false,
+	WhisperUnignore	= true,
+	DebugLog		= false,
+	BanDuration		= T_FOREVER,
+
+	BanOptWhisper	= true,
+	BanOptParty		= false,
+	BanOptGuild		= false,
+	BanOptOfficer	= false,
+	BanOptSay		= true,
+	BanOptYell		= true,
+	BanOptBg		= true,
+	BanOptPublic	= true,
+	BanOptEmote		= true,
+	BanOptTrade		= true,
+	BanOptInvite	= true,
+	BanOptDuel		= true,
+}
+
+-- Fills in missing settings, so options added in later versions get their default
+SI_LoadSettings = function()
+	if not SI_Global then
+		SI_Global = { SettingsVersion = SETTINGS_VERSION }
+	elseif not SI_Global.SettingsVersion then
+		-- Older versions saved unchecked boxes as nil: keep those off
+		for k, v in SI_Defaults do
+			if SI_Global[k] == nil and type(v) == "boolean" then
+				SI_Global[k] = false
+			end
+		end
+		SI_Global.SettingsVersion = SETTINGS_VERSION
+	end
+
+	for k, v in SI_Defaults do
+		if SI_Global[k] == nil then
+			SI_Global[k] = v
+		end
+	end
+end
+
 SI_MainFrame = CreateFrame("frame")
 SI_MainFrame:RegisterEvent("ADDON_LOADED")
 SI_MainFrame:RegisterEvent("IGNORELIST_UPDATE")
@@ -1622,27 +1665,7 @@ SI_MainFrame:SetScript("OnEvent", function()
 	if event == "ADDON_LOADED" then
 		if string.lower(arg1) == SS.AddonDir then
 
-			if not SI_Global then
-				SI_Global = {
-					WhisperBlock	= false,
-					WhisperUnignore	= true,
-					DebugLog		= false,
-					BanDuration		= T_FOREVER,
-
-					BanOptWhisper	= true,
-					BanOptParty		= false,
-					BanOptGuild		= false,
-					BanOptOfficer	= false,
-					BanOptSay		= true,
-					BanOptYell		= true,
-					BanOptBg		= true,
-					BanOptPublic	= true,
-					BanOptEmote		= true,
-					BanOptTrade		= true,
-					BanOptInvite	= true,
-					BanOptDuel		= true,
-				}
-			end
+			SI_LoadSettings()
 			if not SI_Global.Mods then
 				SI_Global.Mods = {}
 			end
