@@ -514,26 +514,6 @@ SI_FormatTimeNoColor = function(t)
 		end
 	end
 end
-SI_FormatTime = function(t)
-	local str, color = SI_FormatTimeNoColor(t)
-	return "|cff" .. color .. "[" .. str .. "]|r "
-end
-
-SI_FormatReason = function(reason, maxLen)
-	if not reason then
-		return ""
-	end
-
-	if maxLen and maxLen <= 5 then
-		return ""
-	end
-
-	if maxLen and string.len(reason) > maxLen then
-		reason = string.sub(reason, 1, maxLen) .. "..."
-	end
-	return " |cffffffff[" .. reason .. "]|r"
-end
-
 SI_FixPlayerName = function(name)
 	return string.gsub(string.lower(name), "^%l", string.upper)
 end
@@ -779,12 +759,40 @@ SI_GetIgnoreName_New = function(index)
 	local banned = SI_RealmSpecific.BannedPlayers[index]
 	if banned then
 		local name = banned[B_NAME]
-		local duration = banned[B_DURATION]
 		local reason = banned[B_REASON]
-		local text = SI_FormatTime(duration) .. name .. SI_FormatReason(reason, (23 - string.len(name)))
-		return text
+		-- Friends list style "Name - Detail"; the duration is drawn separately, right-aligned
+		if reason then
+			local maxLen = 30 - string.len(name)
+			if maxLen <= 5 then
+				return name
+			end
+			if string.len(reason) > maxLen then
+				reason = string.sub(reason, 1, maxLen) .. "..."
+			end
+			return name .. " |cff808080- " .. reason .. "|r"
+		end
+		return name
 	else
 		return UNKNOWN
+	end
+end
+
+-- Right-aligned, dimmed duration on each ignore list row
+SI_IgnoreList_Update_Old = nil
+SI_IgnoreList_Update_New = function()
+	SI_IgnoreList_Update_Old()
+
+	for i = 1, IGNORES_TO_DISPLAY do
+		local button = getglobal("FriendsFrameIgnoreButton" .. i)
+		if button then
+			if not button.siDuration then
+				button.siDuration = button:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+				button.siDuration:SetPoint("RIGHT", button, "RIGHT", -8, 0)
+				button.siDuration:SetJustifyH("RIGHT")
+			end
+			local banned = SI_RealmSpecific.BannedPlayers[button:GetID()]
+			button.siDuration:SetText(banned and SI_FormatTimeNoColor(banned[B_DURATION]) or "")
+		end
 	end
 end
 
@@ -892,6 +900,9 @@ SI_HookFunctions = function()
 
 	SI_GetIgnoreName_Old		= GetIgnoreName
 	GetIgnoreName				= SI_GetIgnoreName_New
+
+	SI_IgnoreList_Update_Old	= IgnoreList_Update
+	IgnoreList_Update			= SI_IgnoreList_Update_New
 
 	SI_GetNumIgnores_Old		= GetNumIgnores
 	GetNumIgnores				= SI_GetNumIgnores_New
@@ -1104,18 +1115,6 @@ SI_LogAdd = function(text, name)
 	return true
 end
 
-SI_LogGetByName = function(name)
-	local log = {}
-
-	for _, msg in SI_Log do
-		if msg[1] == name then
-			table.insert(log, msg[2])
-		end
-	end
-
-	return log
-end
-
 ------------- Frames
 
 
@@ -1237,29 +1236,6 @@ SI_OptionsFrameUpdateHeight = function()
 	SI_OptionsFrame:SetHeight(28 + (- SI_OptionsFramePad))
 end
 
-SI_CreateTooltips = function()
-	for i = 1, 20 do
-		local index = i
-		local b = getglobal("FriendsFrameIgnoreButton" .. index)
-		b:SetScript("OnEnter", function()
-			local fauxIndex = FauxScrollFrame_GetOffset(FriendsFrameIgnoreScrollFrame) + index
-			local name = SI_BannedGetName(fauxIndex)
-			local reason = SI_BannedGetReason(fauxIndex)
-			local log = SI_LogGetByName(name)
-			local tooltipTitle = name .. SI_FormatReason(reason)
-			GameTooltip:SetOwner(b, "ANCHOR_CURSOR")
-			GameTooltip:SetText(tooltipTitle)
-			for _, v in log do
-				GameTooltip:AddLine(v, 1, 1, 1)
-			end
-			GameTooltip:Show()
-		end)
-		b:SetScript("OnLeave", function()
-			GameTooltip:Hide()
-		end)
-	end
-end
-
 SI_CreateShowButton = function()
 	local b = CreateFrame("Button", "SI_OpenButton", IgnoreListFrame, "UIPanelButtonTemplate")
 	b:SetHeight(21)
@@ -1278,7 +1254,6 @@ end
 
 SI_CreateFrames = function()
 	SI_CreateOptionsFrame()
-	SI_CreateTooltips()
 	SI_CreateShowButton()
 
 	local oldOnShow = IgnoreListFrame:GetScript("OnShow")
