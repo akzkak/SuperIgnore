@@ -7,10 +7,11 @@
 ## OptionalDeps: WIM, FuBar_WhisperFu, pfUI
 
 SuperIgnore.lua
+UI.lua
 
-ChatSanitizer\FriendLib.lua
-ChatSanitizer\FilterLib.lua
-
-modules\mod_00.lua
-modules\mod_01.lua
-modules\mod_02.lua
+Filters\FriendLib.lua
+Filters\FilterLib.lua
+Filters\NameFilter.lua
+Filters\SpamFilter.lua
+Filters\CustomFilter.lua
+Filters\Debugger.lua

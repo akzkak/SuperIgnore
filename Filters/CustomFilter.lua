@@ -64,18 +64,45 @@ local wildcardToPattern = function(phrase)
 	return pattern, true
 end
 
-m.updatePhrases = function()
-	local text = box:GetText()
-	SI_ModSetVar(m.mod, "Text", text)
-	phrases = {}
+local buildPhrases = function(text)
+	local list = {}
 	for _, p in getlines(text) do
 		p = stripNonLatin(p)
 		-- A line of only wildcards would match every message
 		if strfind(p, "[^%*%?%s]") then
 			local pattern, isPattern = wildcardToPattern(strupper(p))
-			table.insert(phrases, {pattern, isPattern})
+			table.insert(list, {pattern, isPattern})
 		end
 	end
+	return list
+end
+
+m.updatePhrases = function()
+	local text = box:GetText()
+	SI_ModSetVar(m.mod, "Text", text)
+	phrases = buildPhrases(text)
+end
+
+-- Self-test for the Debugger's simulation, on its own phrase list
+m.test = function(t)
+	local realPhrases = phrases
+	phrases = buildPhrases("buy*gold\nw?w\nDummy Phrase\n(wts)*\nhitem\n1eff00\n*\n   \n")
+	local ok, err = pcall(function()
+		local f = function(msg) return m.chatfilter(msg, "Dummyspammer") end
+		t.check("* matches any text", f("BUY some cheap GOLD"))
+		t.check("? matches one character", f("w0w"))
+		t.check("? doesn't match two", not f("w00w"))
+		t.check("Plain phrases match in any case", f("have a dUMMY pHRASE here"))
+		t.check("Linked item names are matched", f("|cff1eff00|Hitem:2589:0:0:0|h[Dummy Phrase]|h|r"))
+		t.check("Link codes are not ('hitem', '1eff00')", not f("|cff1eff00|Hitem:2589:0:0:0|h[Linen Cloth]|h|r"))
+		t.check("Symbols between letters are ignored", f("dummy phr\226\152\133ase"))
+		t.check("Special characters are literal", f("(wts) stuff") and not f("wts stuff"))
+		t.check("A line of only wildcards is skipped", not f("anything at all"))
+		FriendLib:AddFriend("Dummypal")
+		t.check("Friends are never filtered", not m.chatfilter("buy gold", "Dummypal"))
+	end)
+	phrases = realPhrases
+	if not ok then error(err) end
 end
 
 m.createUI = function(frame)
@@ -101,19 +128,19 @@ m.createUI = function(frame)
 
 	local scroll = CreateFrame("scrollFrame", "SI_CMB_Scroll", gui, "UIPanelScrollFrameTemplate")
 	scroll:SetPoint("TOPLEFT", gui, "TOPLEFT", 15, -60)
-	scroll:SetPoint("BOTTOMRIGHT", gui, "BOTTOMRIGHT", -37, 15)
+	scroll:SetPoint("BOTTOMRIGHT", gui, "BOTTOMRIGHT", -37, 40)
 	scroll:SetScrollChild(box)
 	SI_Skin("scroll", scroll)
+
+	SI_FrameCreateButton("SI_CMB_Copy", gui, "Copy", 85, "BOTTOMLEFT", 15, 14, function()
+		SI_ShowCopyText(m.mod.Name, box:GetText())
+	end)
 
 	box:SetText(SI_ModGetVar(m.mod, "Text") or "")
 end
 
 m.toggle = function()
-	if gui:IsShown() then
-		gui:Hide()
-	else
-		gui:Show()
-	end
+	SI_ToggleModPanel(gui)
 end
 
 m.mod = {
@@ -127,6 +154,7 @@ m.mod = {
 	["OnEdit"] = m.toggle,
 	["NameFilter"] = nil,
 	["ChatFilter"] = m.chatfilter,
+	["Test"] = m.test,
 }
 
 local f = CreateFrame("frame")

@@ -18,6 +18,13 @@ local mod = {
 	["OnDisable"] = nil,
 	["NameFilter"] = namefilter,
 	["ChatFilter"] = nil,
+	["Test"] = function(t)
+		t.check("Accented names are filtered", namefilter("\195\132rger"))
+		t.check("Names with symbols are filtered", namefilter("Dummy\226\152\133"))
+		t.check("Plain names pass", not namefilter("Dummyplain"))
+		FriendLib:AddFriend("\195\132rger")
+		t.check("Friends are never filtered", not namefilter("\195\132rger"))
+	end,
 }
 
 
