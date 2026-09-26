@@ -1,5 +1,5 @@
 
-local chatfilter = function(message, name, type)
+local chatfilter = function(message, name, chatType)
 	return name
 		and (not FriendLib:IsFriend(name))
 		and (FilterLib:Filter(message) == "")

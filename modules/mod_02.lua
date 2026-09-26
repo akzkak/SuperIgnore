@@ -38,7 +38,7 @@ local stripLinks = function(text)
 	return (string.gsub(text, "|r", ""))
 end
 
-m.chatfilter = function(message, name, type)
+m.chatfilter = function(message, name, chatType)
 	if name and FriendLib:IsFriend(name) then
 		return false
 	end

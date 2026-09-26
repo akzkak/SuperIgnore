@@ -170,7 +170,9 @@ if not FilterLib then
 			return cached
 		end
 
-		local spacestrip = "[^1234567890abcdefghijklmnopqrstuvwxyzr&Ä£$!.,%<>=-?‡·‚‰ÂÊÁËÈÍÎÏÌÓÔÒÚÛÙıˆ˘˙˚¸]+"
+		-- Everything but letters, digits and the symbols spam uses (ASCII only: UTF-8
+		-- symbols between letters are removed too, "g★o★l★d" -> "gold")
+		local spacestrip = "[^%w&$!.,<>=?]+"
 		local sCompact = string.gsub(s, spacestrip, "")
 
 		local weight1 = self:SpacedWordCheck(s)
@@ -211,7 +213,9 @@ if not FilterLib then
 
 		-- Remove double spacing and replace odd characters used for spaces with real ones
 		-- and check again
-		local spacestrip = "[^1234567890abcdefghijklmnopqrstuvwxyzr&Ä£$!.,%<>=-?‡·‚‰ÂÊÁËÈÍÎÏÌÓÔÒÚÛÙıˆ˘˙˚¸]+"
+		-- Everything but letters, digits and the symbols spam uses (ASCII only: UTF-8
+		-- symbols between letters are removed too, "g★o★l★d" -> "gold")
+		local spacestrip = "[^%w&$!.,<>=?]+"
 		s = string.gsub(s, spacestrip, " ")
 		weight = weight + self:TestWords(wordsChecked, s)
 

@@ -12,11 +12,11 @@ if not FriendLib then
 	FriendLib.whispered = {}
 	FriendLib.scm = SendChatMessage
 
-	SendChatMessage = function(text, type, lang, chan)
-		if type == "WHISPER" and chan then
+	SendChatMessage = function(text, chatType, lang, chan)
+		if chatType == "WHISPER" and chan then
 			FriendLib:AddFriend(chan)
 		end
-		FriendLib.scm(text, type, lang, chan)
+		FriendLib.scm(text, chatType, lang, chan)
 	end
 
 	function FriendLib.DebugPrint(m)

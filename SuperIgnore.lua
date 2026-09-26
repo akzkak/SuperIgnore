@@ -1,5 +1,5 @@
 local name = "SuperIgnore"
-local version = "1.4.8"
+local version = GetAddOnMetadata(name, "Version") or ""
 
 local SS = {
 	["AddonName"]			= name,
@@ -19,7 +19,7 @@ local SS = {
 	["ChatIgnored"]			= "%s is now being ignored. Duration: %s.",
 	["ChatIgnoredReason"]	= "%s is now being ignored. Duration: %s. Reason: %s",
 	["ChatUnignored"]		= "%s is no longer being ignored.",
-	["ChatBlocked"]			= "Your message was not sent because are ignoring %s.",
+	["ChatBlocked"]			= "Your message was not sent because you are ignoring %s.",
 	["ChatSelf"]			= "You can't ignore yourself.",
 	["ChatExpired"]			= "Timed ignores that expired while offline: %s.",
 
@@ -72,6 +72,7 @@ local TI_RELOG		= -1
 local TI_FOREVER	= 1e30 -- lol
 local TI_AUTOBLOCK	= 1e31
 
+-- Ban entry slots; slot 3 was used by old versions and is left empty
 local B_NAME		= 1
 local B_DURATION	= 2
 local B_REASON		= 4
@@ -108,7 +109,6 @@ SI_OptionsFrame = nil
 SI_RealmSpecific = nil
 SI_TimeCheck_Last = 0
 
-SI_LastIgnoreListButton = nil
 
 SI_Mods = {}
 -- Next free vertical offset in SI_OptionsFrame; mods are appended there
@@ -170,6 +170,9 @@ SI_SkinDetect = function()
 	if SI_PF or not (pfUI and pfUI.api and pfUI.api.CreateBackdrop and pfUI.RegisterSkin and pfUI_config) then return end
 	-- Registered as a pfUI skin so it can be toggled in pfUI's settings
 	if pfUI_config.disabled and pfUI_config.disabled["skin_SuperIgnore"] == "1" then return end
+	-- Registered once; pfUI calls it when ready
+	if SI_SkinRegistered then return end
+	SI_SkinRegistered = true
 	-- Runs immediately if pfUI finished booting, otherwise once it does.
 	-- pfUI setfenv()s skin functions into its own environment, so only call through an upvalue here.
 	pfUI:RegisterSkin("SuperIgnore", function() skinActivate() end)
@@ -237,18 +240,6 @@ SI_FrameCreateOption = function(frame, name, desc, pad, onclick)
 	end)
 
 	return c, ct
-end
-
-SI_FrameCreateButton = function(frame, text, pad, onclick)
-	local b = CreateFrame("Button", text, frame, "UIPanelButtonTemplate")
-	b:SetHeight(20)
-	b:SetWidth(85)
-	b:SetPoint("TOPLEFT", frame, "TOPLEFT", 100, pad)
-	b:SetText(text)
-	b:SetScript("OnClick", onclick)
-	SI_Skin("button", b)
-
-	return b
 end
 
 ------------- Mods
@@ -416,13 +407,13 @@ SI_FilterIsPlayerIgnored = function(name)
 	return false
 end
 
-SI_FilterIsChatIgnored = function(message, name, type)
+SI_FilterIsChatIgnored = function(message, name, chatType)
 	if name == UnitName("player") then
 		return false
 	end
 
 	for _, filter in SI_ChatFilter do
-		if filter(message, name, type) then
+		if filter(message, name, chatType) then
 			SI_CheckAutoBlock(name, SI_FilterSource[filter])
 			return true
 		end
@@ -601,10 +592,6 @@ end
 SI_BannedGetName = function(index)
 	return SI_RealmSpecific.BannedPlayers[index][B_NAME]
 end
-SI_BannedSetName = function(index, name)
-	SI_RealmSpecific.BannedPlayers[index][B_NAME] = name
-	SI_BannedIndexChanged()
-end
 
 SI_BannedSortByTime = function()
 	local selected = SI_RealmSpecific.BannedPlayers[SI_RealmSpecific.BannedSelected]
@@ -685,14 +672,14 @@ end
 isChatIgnored = function(event, arg1, arg2, arg3, arg4)
 
 	if strsub(event, 1, 8) == "CHAT_MSG" then
-		local type = strsub(event, 10)
+		local chatType = strsub(event, 10)
 
-		local source = strsub(type,1,1)
-		if type == "CHANNEL" and arg4 then
+		local source = strsub(chatType,1,1)
+		if chatType == "CHANNEL" and arg4 then
 			source = strsub(arg4,1,1)
 		end
 
-		if arg1 and type == "SYSTEM" then
+		if arg1 and chatType == "SYSTEM" then
 			if SI_IsCancelMessage(arg1) then
 				return true
 			end
@@ -718,10 +705,10 @@ isChatIgnored = function(event, arg1, arg2, arg3, arg4)
 			end
 		end
 
-		if arg1 and arg2 and SI_IsChannelBanned(type) then
-			if SI_FilterIsPlayerIgnored(arg2) or SI_FilterIsChatIgnored(arg1, arg2, type) then
+		if arg1 and arg2 and SI_IsChannelBanned(chatType) then
+			if SI_FilterIsPlayerIgnored(arg2) or SI_FilterIsChatIgnored(arg1, arg2, chatType) then
 				SI_LogIgnore(arg1, arg2, source)
-				SI_BubbleBlock(type, arg1)
+				SI_BubbleBlock(chatType, arg1)
 				return true
 			end
 		end
@@ -812,8 +799,8 @@ bubbleFrame:SetScript("OnUpdate", function()
 	end
 end)
 
-SI_BubbleBlock = function(type, text)
-	if not BUBBLE_TYPES[type] then return end
+SI_BubbleBlock = function(chatType, text)
+	if not BUBBLE_TYPES[chatType] then return end
 	bubbleTexts[text] = GetTime() + BUBBLE_DETECT
 	bubbleFrame:Show()
 end
@@ -1693,7 +1680,7 @@ SI_CreateFrames = function()
 end
 
 SI_EnableIgnoreListRightclick = function()
-	for i = 1, 20 do
+	for i = 1, IGNORES_TO_DISPLAY do
 		local item = getglobal("FriendsFrameIgnoreButton" .. i)
 		item:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 	end
@@ -1813,13 +1800,26 @@ SlashCmdList["IGNORE"] = function(msg)
 	end
 end
 
+-- Inserts "IGNORE" before the anchor entry (at the end if it's missing), so menus
+-- other addons changed still get it in a sensible spot, and only once
+local addIgnoreToMenu = function(menu, anchor)
+	local items = UnitPopupMenus[menu]
+	if not items then return end
+	local pos = table.getn(items) + 1
+	for i = 1, table.getn(items) do
+		if items[i] == "IGNORE" then return end
+		if items[i] == anchor and pos > i then pos = i end
+	end
+	tinsert(items, pos, "IGNORE")
+end
+
 --Add Ignore button to dropdown menus (skip on Turtle WoW, which already has it)
 if getglobal("TURTLE_WOW_VERSION") == nil then
 	UnitPopupButtons["IGNORE"]	= { text = TEXT(IGNORE), dist = 0 };
-	tinsert(UnitPopupMenus["FRIEND"], 4, "IGNORE");
-	tinsert(UnitPopupMenus["PLAYER"], 8, "IGNORE");
-	tinsert(UnitPopupMenus["RAID"], 5, "IGNORE");
-	tinsert(UnitPopupMenus["PARTY"], 10, "IGNORE");
+	addIgnoreToMenu("FRIEND", "GUILD_PROMOTE")
+	addIgnoreToMenu("PLAYER", "CANCEL")
+	addIgnoreToMenu("RAID", "CANCEL")
+	addIgnoreToMenu("PARTY", "CANCEL")
 end
 
 local function PostHookFunction(original, hook, pre)
