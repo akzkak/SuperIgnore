@@ -28,6 +28,5 @@ The /ignore command is modified so you can include an ignore reason:
 - Players writing these phrases will be temporarily blocked
 
 ## Preview
-
-<img width="805" height="578" alt="WoW_26-09-26 (5)" src="https://github.com/user-attachments/assets/a6d5a6ff-ce05-4871-b589-5fb48fd8ed50" />
-<img width="805" height="578" alt="WoW_26-09-26 (4)" src="https://github.com/user-attachments/assets/6de5da42-4ee9-4c67-ad58-9b21ca562d71" />
+<img width="802" height="582" alt="WoW_26-09-26 (9)" src="https://github.com/user-attachments/assets/9f937f19-f617-42ca-b655-dc49127d6364" />
+<img width="802" height="582" alt="WoW_26-09-26 (8)" src="https://github.com/user-attachments/assets/b157c6fa-dc90-4ec6-9ba4-5a5b35222bb1" />
