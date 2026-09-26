@@ -1681,6 +1681,9 @@ SI_MainFrame:SetScript("OnEvent", function()
 					BannedSelected	= SI_Global.BannedSelected or 1,
 				}
 			end
+			-- The pre-realm list goes to the first realm only, not to every new one
+			SI_Global.BannedPlayers = nil
+			SI_Global.BannedSelected = nil
 
 			SI_RealmSpecific = SI_Global.DataByRealm[realm]
 
