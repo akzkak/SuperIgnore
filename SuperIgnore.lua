@@ -6,14 +6,15 @@ local SS = {
 	["AddonDir"]			= strlower(name),
 	["AddonVersion"] 		= version,
 
+	["TextGeneral"] 		= "General",
 	["TextOptions"] 		= "Ignore Filter",
 	["TextDuration"]		= "Default Ignore Time",
-	["TextWhisperBlock"]	= "Do not let me whisper\nignored players",
-	["TextWhisperUnignore"]	= "Unignore players if I\nwhisper them",
-	["TextDebugLog"]		= "Debug: Log ignored\nactions in chat",
+	["TextWhisperBlock"]	= "Do not let me whisper ignored players",
+	["TextWhisperUnignore"]	= "Unignore players if I whisper them",
+	["TextDebugLog"]		= "Debug: Log ignored actions in chat",
 
-	["TextInformation"]		= "Info",
-	["TextEnabled"]			= "Enabled",
+	["TextModules"]			= "Modules",
+	["TextEdit"]			= "Edit",
 
 	["ChatIgnored"]			= "%s is now being ignored. Duration: %s.",
 	["ChatIgnoredReason"]	= "%s is now being ignored. Duration: %s. Reason: %s",
@@ -98,14 +99,14 @@ SI_ChatFilter = {}
 
 SI_MainFrame = nil
 SI_OptionsFrame = nil
-SI_ModsFrame = nil
 SI_RealmSpecific = nil
 SI_TimeCheck_Last = 0
 
 SI_LastIgnoreListButton = nil
 
 SI_Mods = {}
-SI_ModsFramePad = 0
+-- Next free vertical offset in SI_OptionsFrame; mods are appended there
+SI_OptionsFramePad = 0
 
 SI_Log = {}
 
@@ -244,13 +245,6 @@ end
 
 ------------- Mods
 
-StaticPopupDialogs["SI_ModInfo"] = {
-	text = "",
-	button1 = TEXT(ACCEPT),
-	timeout = 0,
-	hideOnEscape = 1
-}
-
 SI_ModsGetNumber = function()
 	return table.getn(SI_Mods)
 end
@@ -260,36 +254,54 @@ SI_ModsGetMod = function(index)
 end
 
 local createModUI = function(index, mod)
-	local f = SI_ModsFrame
+	local f = SI_OptionsFrame
 
-	SI_FrameCreateHeader(f, mod.Name, 12, SI_ModsFramePad)
-	SI_ModsFramePad = SI_ModsFramePad - 18
-
-	if mod.Description then
-		SI_FrameCreateButton(f, SS.TextInformation, SI_ModsFramePad, function()
-			local t = mod.Description
-			if mod.Help then
-				t = t .. "|n|n" .. mod.Help
-			end
-			StaticPopupDialogs["SI_ModInfo"].text = t
-			StaticPopup_Show("SI_ModInfo")
-		end)
+	if index == 1 then
+		SI_OptionsFramePad = SI_OptionsFramePad - 5
+		SI_FrameCreateHeader(f, SS.TextModules, 11, SI_OptionsFramePad)
+		SI_OptionsFramePad = SI_OptionsFramePad - 15
 	end
 
-	local c = SI_FrameCreateCheckbox("SI_ModEnable_"..mod.Name, f, 20, SI_ModsFramePad, SS.TextEnabled)
+	local c, ct = SI_FrameCreateCheckbox("SI_ModEnable_"..index, f, 15, SI_OptionsFramePad, mod.Name)
 	c:SetScript("OnClick", function()
 		local checked = c:GetChecked()
 		if checked then SI_ModEnable(index) else SI_ModDisable(index) end
 	end)
 	c:SetChecked(SI_Global.Mods[mod.Name].Enabled)
-	SI_ModsFramePad = SI_ModsFramePad - 20
+	-- Leave room for the Edit button
+	SI_OptionsFrameAddLabel(ct, mod.OnEdit and 45 or 0)
+
+	if mod.Description then
+		c:SetScript("OnEnter", function()
+			GameTooltip:SetOwner(c, "ANCHOR_RIGHT")
+			GameTooltip:SetText(mod.Name)
+			GameTooltip:AddLine(mod.Description, 1, 1, 1, 1)
+			if mod.Help then
+				GameTooltip:AddLine(mod.Help, .8, .8, .8, 1)
+			end
+			GameTooltip:Show()
+		end)
+		c:SetScript("OnLeave", function()
+			GameTooltip:Hide()
+		end)
+	end
 
 	if mod.CreateUI then
-		SI_ModsFramePad = mod.CreateUI(f, SI_ModsFramePad)
+		mod.CreateUI(f)
 	end
-	SI_ModsFramePad = SI_ModsFramePad - 25
 
-	SI_ModsFrameUpdateHeight()
+	if mod.OnEdit then
+		local b = CreateFrame("Button", "SI_ModEdit_"..index, f, "UIPanelButtonTemplate")
+		b:SetHeight(18)
+		b:SetWidth(40)
+		b:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, SI_OptionsFramePad - 1)
+		b:SetText(SS.TextEdit)
+		b:SetScript("OnClick", mod.OnEdit)
+		SI_Skin("button", b)
+	end
+
+	SI_OptionsFramePad = SI_OptionsFramePad - 15
+	SI_OptionsFrameUpdateHeight()
 end
 
 SI_ModInstall = function(mod)
@@ -1121,26 +1133,34 @@ SI_CreateOptionsFrame = function()
 			if onclick then onclick(checked) end
 		end)
 		c:SetChecked(SI_Global[var])
+		SI_OptionsFrameAddLabel(ct)
 
 		return c, ct
 	end
 
 	pad = pad - 15
-	SI_FrameCreateHeader(f, string.format("%s %s", SS.AddonName, SS.AddonVersion), 12, pad)
-	pad = pad - 25
+	local version = f:CreateFontString(nil, "OVERLAY", f)
+	version:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 8)
+	version:SetFont("Fonts\\FRIZQT__.TTF", 9)
+	SI_Skin("font", version, 9)
+	version:SetTextColor(.5, .5, .5, .6)
+	version:SetText("v" .. SS.AddonVersion)
+
+	SI_FrameCreateHeader(f, SS.TextGeneral, 11, pad)
+	pad = pad - 15
 
 	createOpt(100, "WhisperBlock", SS.TextWhisperBlock, pad, function(checked)
 		if checked and SI_Box_101:GetChecked() then SI_Box_101:Click() end
 	end)
-	pad = pad - 35
+	pad = pad - 18
 
 	createOpt(101, "WhisperUnignore", SS.TextWhisperUnignore, pad, function(checked)
 		if checked and SI_Box_100:GetChecked() then SI_Box_100:Click() end
 	end)
-	pad = pad - 35
+	pad = pad - 18
 
 	createOpt(103, "DebugLog", SS.TextDebugLog, pad)
-	pad = pad - 35
+	pad = pad - 28
 
 	SI_FrameCreateHeader(f, SS.TextOptions, 11, pad)
 	pad = pad - 15
@@ -1191,17 +1211,30 @@ SI_CreateOptionsFrame = function()
 	UIDropDownMenu_SetSelectedID(dd, SI_Global.BanDuration)
 	SI_Skin("dropdown", dd)
 
-	f:SetHeight(40 + (- pad))
+	SI_OptionsFramePad = pad - 35
+	SI_OptionsFrameUpdateHeight()
+	f:SetScript("OnShow", SI_OptionsFrameUpdateWidth)
 end
 
-SI_CreateModsFrame = function()
-	SI_ModsFrame = SI_FrameCreateFrame("SI_ModsFrame", 210, SI_OptionsFrame, -10, 0)
-	SI_ModsFramePad = -15
-	SI_ModsFrameUpdateHeight()
+-- Option labels and the extra space each row needs to their right
+SI_OptionsFrameLabels = {}
+
+SI_OptionsFrameAddLabel = function(label, extra)
+	table.insert(SI_OptionsFrameLabels, {label, extra or 0})
 end
 
-SI_ModsFrameUpdateHeight = function()
-	SI_ModsFrame:SetHeight(20 + (- SI_ModsFramePad))
+-- Fits the frame to its widest row, so labels never wrap (font depends on pfUI)
+SI_OptionsFrameUpdateWidth = function()
+	local width = 185
+	for _, l in SI_OptionsFrameLabels do
+		-- checkbox offset + checkbox + label + row extra + right margin
+		width = math.max(width, 15 + 20 + l[1]:GetStringWidth() + l[2] + 20)
+	end
+	SI_OptionsFrame:SetWidth(math.ceil(width))
+end
+
+SI_OptionsFrameUpdateHeight = function()
+	SI_OptionsFrame:SetHeight(28 + (- SI_OptionsFramePad))
 end
 
 SI_CreateTooltips = function()
@@ -1237,19 +1270,14 @@ SI_CreateShowButton = function()
 	b:SetScript("OnClick", function()
 		if SI_OptionsFrame:IsShown() then
 			SI_OptionsFrame:Hide()
-			SI_ModsFrame:Hide()
 		else
 			SI_OptionsFrame:Show()
-			if SI_ModsGetNumber() > 0 then
-				SI_ModsFrame:Show()
-			end
 		end
 	end)
 end
 
 SI_CreateFrames = function()
 	SI_CreateOptionsFrame()
-	SI_CreateModsFrame()
 	SI_CreateTooltips()
 	SI_CreateShowButton()
 

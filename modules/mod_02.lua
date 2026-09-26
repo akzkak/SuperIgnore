@@ -49,9 +49,14 @@ m.updatePhrases = function()
 	end
 end
 
-m.createFrame = function(frame)
-	gui = SI_FrameCreateFrame("SI_CMB", 500, frame, -10, 0)
-	gui:SetHeight(400)
+m.createUI = function(frame)
+	gui = SI_FrameCreateFrame("SI_CMB", 240, frame, -10, 0)
+	gui:SetHeight(300)
+
+	SI_FrameCreateHeader(gui, m.mod.Name, 12, -15)
+	local hint = gui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	hint:SetPoint("TOP", gui, "TOP", 0, -32)
+	hint:SetText("One phrase per line")
 
 	box = CreateFrame("EditBox", "SI_CMB_Box", gui)
 	box:SetMultiLine(true)
@@ -60,13 +65,13 @@ m.createFrame = function(frame)
 	box:SetMaxLetters(99999)
 	box:SetFont("Fonts\\ARIALN.ttf", 13, "THINOUTLINE")
 	SI_Skin("font", box, 13)
-	box:SetWidth(400)
+	box:SetWidth(180)
 	box:SetHeight(3000)
 	box:SetScript("OnEscapePressed", function() gui:Hide() end)
 	box:SetScript("OnTextChanged", function() m.updatePhrases() end)
 
 	local scroll = CreateFrame("scrollFrame", "SI_CMB_Scroll", gui, "UIPanelScrollFrameTemplate")
-	scroll:SetPoint("TOPLEFT", gui, "TOPLEFT", 15, -15)
+	scroll:SetPoint("TOPLEFT", gui, "TOPLEFT", 15, -50)
 	scroll:SetPoint("BOTTOMRIGHT", gui, "BOTTOMRIGHT", -37, 15)
 	scroll:SetScrollChild(box)
 	SI_Skin("scroll", scroll)
@@ -74,25 +79,22 @@ m.createFrame = function(frame)
 	box:SetText(SI_ModGetVar(m.mod, "Text") or "")
 end
 
-m.createUI = function(frame, pad)
-	m.createFrame(frame)
-	SI_FrameCreateButton(frame, "Phrases", pad, function()
-		if gui:IsShown() then
-			gui:Hide()
-		else
-			gui:Show()
-		end
-	end)
-	return pad - 15
+m.toggle = function()
+	if gui:IsShown() then
+		gui:Hide()
+	else
+		gui:Show()
+	end
 end
 
 m.mod = {
 	["Name"] = "Custom Filter",
 	["Description"] = "Blocks all messages containing a phrase.",
-	["Help"] = "Enter one phrase per line in the 'Phrases' window. Players that write messages containing one of these phrases will be temporarily ignored. Friends, party and guild members are never ignored.",
+	["Help"] = "Click 'Edit' and enter one phrase per line. Players that write messages containing one of these phrases will be temporarily ignored. Friends, party and guild members are never ignored.",
 	["OnEnable"] = m.updatePhrases,
 	["OnDisable"] = nil,
 	["CreateUI"] = m.createUI,
+	["OnEdit"] = m.toggle,
 	["NameFilter"] = nil,
 	["ChatFilter"] = m.chatfilter,
 }

@@ -11,9 +11,6 @@ local mod = {
 	["Description"] = "Blocks messages sent by players who have special characters in their names.",
 	["OnEnable"] = nil,
 	["OnDisable"] = nil,
-	["CreateUI"] = function(frame, pad)
-		return pad
-	end,
 	["NameFilter"] = namefilter,
 	["ChatFilter"] = nil,
 }
