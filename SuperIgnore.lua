@@ -651,19 +651,88 @@ SI_IsChatIgnored = function(event, arg1, arg2, arg3, arg4)
 		end
 
 		if arg1 and arg2 and SI_IsChannelBanned(type) then
-			if SI_FilterIsPlayerIgnored(arg2) then
+			if SI_FilterIsPlayerIgnored(arg2) or SI_FilterIsChatIgnored(arg1, arg2, type) then
 				SI_LogIgnore(arg1, arg2, source)
-				return true
-			end
-
-			if SI_FilterIsChatIgnored(arg1, arg2, type) then
-				SI_LogIgnore(arg1, arg2, source)
+				SI_BubbleBlock(type, arg1)
 				return true
 			end
 		end
 	end
 
 	return false
+end
+
+------------- Chat Bubbles
+
+-- Bubbles are drawn by the client and don't know the sender, so blocked messages are
+-- remembered for a few seconds and any bubble (unnamed WorldFrame child) showing that
+-- exact text is made invisible. Hidden bubbles are tracked because the client recycles them.
+local BUBBLE_TYPES = { SAY = true, YELL = true, PARTY = true }
+local BUBBLE_TTL = 5
+
+local bubbleTexts = {}		-- text -> expiry time
+local bubbleHidden = {}		-- frame -> text it was hidden for
+local bubbleFrame = CreateFrame("Frame")
+bubbleFrame:Hide()
+
+local bubbleGetText = function(frame)
+	local regions = { frame:GetRegions() }
+	for i = 1, table.getn(regions) do
+		local r = regions[i]
+		if r:GetObjectType() == "FontString" then
+			local text = r:GetText()
+			if text then return text end
+		end
+	end
+end
+
+bubbleFrame:SetScript("OnUpdate", function()
+	local now = GetTime()
+	local active = false
+
+	for text, expiry in bubbleTexts do
+		if expiry < now then
+			bubbleTexts[text] = nil
+		else
+			active = true
+		end
+	end
+
+	-- Keep hidden bubbles invisible, give recycled ones their alpha back
+	for frame, text in bubbleHidden do
+		if frame:IsShown() and bubbleGetText(frame) == text then
+			frame:SetAlpha(0)
+			active = true
+		else
+			frame:SetAlpha(1)
+			bubbleHidden[frame] = nil
+		end
+	end
+
+	if next(bubbleTexts) then
+		local kids = { WorldFrame:GetChildren() }
+		for i = 1, table.getn(kids) do
+			local frame = kids[i]
+			if not bubbleHidden[frame] and not frame:GetName() and frame:IsShown() then
+				local text = bubbleGetText(frame)
+				if text and bubbleTexts[text] then
+					frame:SetAlpha(0)
+					bubbleHidden[frame] = text
+					active = true
+				end
+			end
+		end
+	end
+
+	if not active then
+		this:Hide()
+	end
+end)
+
+SI_BubbleBlock = function(type, text)
+	if not BUBBLE_TYPES[type] then return end
+	bubbleTexts[text] = GetTime() + BUBBLE_TTL
+	bubbleFrame:Show()
 end
 
 ------------- Overrides
