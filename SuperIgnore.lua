@@ -780,18 +780,25 @@ local ignoreRowNameText = function(button)
 	return getglobal(button:GetName() .. "ButtonTextName")
 end
 
--- Offset from the row's right edge that mirrors the name's left padding,
--- measured between the Friends/Ignore tabs (left) and the SuperIgnore button (right)
+-- Offset from the row's right edge that mirrors the name's left padding.
+-- pfUI: measured between the Friends/Ignore tabs (left) and the SuperIgnore button (right).
+-- Default UI: the tabs are centered, not edge-aligned, so mirror the padding within the row itself.
 local ignoreRowRightOffset = function(button)
 	local nameText = ignoreRowNameText(button)
-	local leftEdge = IgnoreFrameToggleTab1 and IgnoreFrameToggleTab1:GetLeft()
-	local rightEdge = SI_OpenButton and SI_OpenButton:GetRight()
 	local textLeft = nameText and nameText:GetLeft()
-	local rowRight = button:GetRight()
-	if not (leftEdge and rightEdge and textLeft and rowRight) then
+	local rowLeft, rowRight = button:GetLeft(), button:GetRight()
+	if not (textLeft and rowLeft and rowRight) then
 		return nil
 	end
-	return (rightEdge - (textLeft - leftEdge)) - rowRight
+	if SI_PF then
+		local leftEdge = IgnoreFrameToggleTab1 and IgnoreFrameToggleTab1:GetLeft()
+		local rightEdge = SI_OpenButton and SI_OpenButton:GetRight()
+		if not (leftEdge and rightEdge) then
+			return nil
+		end
+		return (rightEdge - (textLeft - leftEdge)) - rowRight
+	end
+	return -(textLeft - rowLeft)
 end
 
 -- Cuts the reason with "..." so the row text ends before the duration column
