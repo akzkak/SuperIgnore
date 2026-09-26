@@ -21,6 +21,7 @@ local SS = {
 	["ChatUnignored"]		= "%s is no longer being ignored.",
 	["ChatBlocked"]			= "Your message was not sent because are ignoring %s.",
 	["ChatSelf"]			= "You can't ignore yourself.",
+	["ChatExpired"]			= "Timed ignores that expired while offline: %s.",
 
 	["BanWhisper"]			= "Whispers",
 	["BanParty"]			= "Party / Raid",
@@ -74,6 +75,7 @@ local TI_AUTOBLOCK	= 1e31
 local B_NAME		= 1
 local B_DURATION	= 2
 local B_REASON		= 4
+local B_OPTION		= 5 -- duration menu option the ignore was set with, nil if set directly
 
 local T_Time = {
 	TI_RELOG,
@@ -378,9 +380,9 @@ SI_AddNameFilter = function(filter)
 	table.insert(SI_NameFilter, filter)
 end
 SI_DelNameFilter = function(filter)
-	for k, v in SI_NameFilter do
-		if v == filter then
-			table.remove(SI_NameFilter, k)
+	for i = table.getn(SI_NameFilter), 1, -1 do
+		if SI_NameFilter[i] == filter then
+			table.remove(SI_NameFilter, i)
 		end
 	end
 end
@@ -389,9 +391,9 @@ SI_AddChatFilter = function(filter)
 	table.insert(SI_ChatFilter, filter)
 end
 SI_DelChatFilter = function(filter)
-	for k, v in SI_ChatFilter do
-		if v == filter then
-			table.remove(SI_ChatFilter, k)
+	for i = table.getn(SI_ChatFilter), 1, -1 do
+		if SI_ChatFilter[i] == filter then
+			table.remove(SI_ChatFilter, i)
 		end
 	end
 end
@@ -469,7 +471,8 @@ SI_BannedClearRelog = function()
 		SI_DelIgnore_New(name, true)
 	end
 end
-SI_BannedCheckTimes = function()
+-- quiet: remove without a chat line per player; returns the removed names
+SI_BannedCheckTimes = function(quiet)
 	local unbanNames = {}
 	for _, banned in SI_RealmSpecific.BannedPlayers do
 		if SI_IsBanTimeOver(banned[B_DURATION]) then
@@ -478,8 +481,9 @@ SI_BannedCheckTimes = function()
 	end
 
 	for _, name in unbanNames do
-		SI_DelIgnore_New(name)
+		SI_DelIgnore_New(name, quiet)
 	end
+	return unbanNames
 end
 SI_BannedCheckTimesPeriodic = function()
 	if GetTime() - SI_TimeCheck_Last > 60 then
@@ -487,6 +491,11 @@ SI_BannedCheckTimesPeriodic = function()
 		SI_BannedCheckTimes()
 	end
 end
+
+-- Expires timed ignores on time, not only when a filter happens to run; shown once loaded
+local expiryFrame = CreateFrame("Frame")
+expiryFrame:Hide()
+expiryFrame:SetScript("OnUpdate", SI_BannedCheckTimesPeriodic)
 SI_FormatTimeNoColor = function(t)
 
 	local _s = function(n)
@@ -526,13 +535,25 @@ SI_FixPlayerName = function(name)
 	return string.gsub(string.lower(name), "^%l", string.upper)
 end
 
-SI_StringFindPattern = function(s, r)
-	-- %s
-	-- ([^ ]+)
-	-- (.*)
-	r = string.gsub(r, "%%s", "%(%[%^ %]%+%)", 1)
-	r = string.gsub(r, "%%s", "%(%.%*%)")
-	return string.find(s, r)
+-- Matches s against a GlobalStrings format ("%s has invited you.", or positional
+-- "%2$s ... %1$s" as some locales use). Returns start, end and the values in argument
+-- order; argument 1 is a player name, so it can't contain spaces.
+SI_StringFindPattern = function(s, format)
+	local order = {}
+	local r = string.gsub(format, "([%^%$%(%)%.%[%]%*%+%-%?])", "%%%1")
+	r = string.gsub(r, "%%(%d*)%%?%$?s", function(pos)
+		local arg = tonumber(pos) or table.getn(order) + 1
+		table.insert(order, arg)
+		return arg == 1 and "([^ ]+)" or "(.*)"
+	end)
+
+	local found = { string.find(s, "^" .. r .. "$") }
+	if not found[1] then return nil end
+	local values = {}
+	for i = 1, table.getn(order) do
+		values[order[i]] = found[i + 2]
+	end
+	return found[1], found[2], values[1], values[2], values[3]
 end
 
 SI_FixBannedSelected = function()
@@ -571,6 +592,12 @@ end
 SI_BannedSetReason = function(index, reason)
 	SI_RealmSpecific.BannedPlayers[index][B_REASON] = reason
 end
+SI_BannedGetOption = function(index)
+	return SI_RealmSpecific.BannedPlayers[index][B_OPTION]
+end
+SI_BannedSetOption = function(index, option)
+	SI_RealmSpecific.BannedPlayers[index][B_OPTION] = option
+end
 SI_BannedGetName = function(index)
 	return SI_RealmSpecific.BannedPlayers[index][B_NAME]
 end
@@ -580,6 +607,7 @@ SI_BannedSetName = function(index, name)
 end
 
 SI_BannedSortByTime = function()
+	local selected = SI_RealmSpecific.BannedPlayers[SI_RealmSpecific.BannedSelected]
 	table.sort(SI_RealmSpecific.BannedPlayers, function(a, b)
 		local at = a[B_DURATION]
 		local bt = b[B_DURATION]
@@ -590,12 +618,17 @@ SI_BannedSortByTime = function()
 		end
 	end)
 	SI_BannedIndexChanged()
+	-- Keep the selection on the same player, not the same row
+	if selected then
+		SI_RealmSpecific.BannedSelected = SI_BannedGetIndex(selected[B_NAME])
+	end
 end
 
 SI_IsChannelBanned = function(c)
 	local g = SI_Global
 
-	if c == "WHISPER"	then return g.BanOptWhisper end
+	if(c == "WHISPER" or c == "AFK" or c == "DND")
+						then return g.BanOptWhisper end
 	if(c == "PARTY" or c == "RAID" or c == "RAID_LEADER" or c == "RAID_WARNING")
 						then return g.BanOptParty end
 	if c == "GUILD"		then return g.BanOptGuild end
@@ -846,16 +879,19 @@ SI_AddIgnore_New = function(name, quiet, banTime, reason)
 		return
 	end
 
+	local option
 	if not banTime then
-		banTime = SI_CalcBanTime()
+		option = SI_Global.BanDuration
+		banTime = SI_CalcBanTime(option)
 	end
 
 	local index = SI_BannedGetIndex(name)
 	if index then
 		SI_BannedSetDuration(index, banTime)
 		SI_BannedSetReason(index, reason)
+		SI_BannedSetOption(index, option)
 	else
-		table.insert(SI_RealmSpecific.BannedPlayers, {name, banTime, nil, reason})
+		table.insert(SI_RealmSpecific.BannedPlayers, {name, banTime, nil, reason, option})
 		SI_BannedIndexChanged()
 	end
 
@@ -956,6 +992,12 @@ local ignoreRowFitText = function(nameText, banned, duration)
 	local len = string.len(reason)
 	while len > 0 do
 		len = len - 1
+		-- Never cut inside a UTF-8 character (continuation bytes are 128-191)
+		local b = string.byte(reason, len + 1)
+		while len > 0 and b >= 128 and b < 192 do
+			len = len - 1
+			b = string.byte(reason, len + 1)
+		end
 		local cut = string.gsub(string.sub(reason, 1, len), "%s+$", "")
 		nameText:SetText(name .. " |cff808080- " .. cut .. "...|r")
 		if nameText:GetStringWidth() <= maxWidth then return true end
@@ -1134,7 +1176,7 @@ SI_TradeFrame_OnEvent_New = function()
 end
 
 SI_ChatFrame_OnEvent_New = function(event)
-	if not SI_IsChatIgnored(event, arg1, arg2, agr3, arg4) then
+	if not SI_IsChatIgnored(event, arg1, arg2, arg3, arg4) then
 		SI_ChatFrame_OnEvent_Old(event)
 	end
 end
@@ -1231,7 +1273,6 @@ end
 SI_ApplyFilters = function()
 
 	SI_AddNameFilter(function(name)
-		SI_BannedCheckTimesPeriodic()
 		local index = SI_BannedGetIndex(name)
 		if index and SI_BannedGetDuration(index) ~= TI_AUTOBLOCK then
 			return true
@@ -1294,6 +1335,7 @@ SI_BannedChangeDuration = function(name, option)
 
 	local banTime = SI_CalcBanTime(option)
 	SI_BannedSetDuration(index, banTime)
+	SI_BannedSetOption(index, option)
 	SI_BannedSortByTime()
 	SI_RealmSpecific.BannedSelected = SI_BannedGetIndex(name)
 	IgnoreList_Update()
@@ -1320,11 +1362,13 @@ local rightClickMenuInit = function()
 
 	if UIDROPDOWNMENU_MENU_LEVEL == 2 then
 		local current = SI_BannedGetDuration(index)
+		local currentOption = SI_BannedGetOption(index)
 		for i = 1, table.getn(T_Time_TextOpt) do
 			local option = i
 			info = {}
 			info.text = T_Time_TextOpt[i]
-			info.checked = SI_IsTimeSpecial(T_Time[i]) and current == T_Time[i]
+			-- Entries from older versions have no option; their special durations still match
+			info.checked = currentOption == i or (SI_IsTimeSpecial(T_Time[i]) and current == T_Time[i])
 			info.func = function()
 				SI_BannedChangeDuration(name, option)
 				CloseDropDownMenus()
@@ -1739,7 +1783,12 @@ SI_MainFrame:SetScript("OnEvent", function()
 			SI_Print(string.format("%s %s loaded.", SS.AddonName, SS.AddonVersion))
 
 			SI_BannedClearRelog()
-			SI_BannedCheckTimes()
+			local expired = SI_BannedCheckTimes(true)
+			if table.getn(expired) > 0 then
+				SI_Print(string.format(SS.ChatExpired, table.concat(expired, ", ")))
+			end
+			SI_TimeCheck_Last = GetTime()
+			expiryFrame:Show()
 		end
 	elseif event == "PLAYER_LOGIN" then
 		-- Every addon (incl. pfUI) is loaded by now regardless of load order
@@ -1804,7 +1853,6 @@ local function SI_UnitPopup_OnClick()
 	if ( button == "IGNORE" and not SI_IgnoreHandled ) then
 		SI_AddOrDelIgnore_New(name);
 	end
-	PlaySound("UChatScrollButton");
 end
 -- Clear the flag before the original runs, so only this click can mark it handled
 -- (ignores from /ignore, filters or expiry would otherwise leave it set)
