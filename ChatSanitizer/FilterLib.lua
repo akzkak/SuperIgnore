@@ -1,7 +1,11 @@
 if not FilterLib then
 
 	FilterLib = {}
+	-- Ratings of recent messages (each one is rated once per chat frame); cleared when
+	-- full so it can't grow for the whole session
 	FilterLib.cachedRatings = {}
+	FilterLib.cachedCount = 0
+	FilterLib.cacheMax = 200
 
 	-- Stolen from SpamMeNot
 	FilterLib.words = {
@@ -161,10 +165,9 @@ if not FilterLib then
 		s = self:RemoveHyperLinks(s)
 		s = string.lower(s)
 
-		if self.cachedRatings[s] then
-			if self.cachedRatings[s][self.words] then
-				return self.cachedRatings[s][self.words]
-			end
+		local cached = self.cachedRatings[s]
+		if cached then
+			return cached
 		end
 
 		local spacestrip = "[^1234567890abcdefghijklmnopqrstuvwxyzr&Ä£$!.,%<>=-?‡·‚‰ÂÊÁËÈÍÎÏÌÓÔÒÚÛÙıˆ˘˙˚¸]+"
@@ -183,11 +186,12 @@ if not FilterLib then
 			weight = weight3
 		end
 
-		if not self.cachedRatings[s] then
-			self.cachedRatings[s] = {}
+		if self.cachedCount >= self.cacheMax then
+			self.cachedRatings = {}
+			self.cachedCount = 0
 		end
-
-		self.cachedRatings[s][self.words] = weight
+		self.cachedRatings[s] = weight
+		self.cachedCount = self.cachedCount + 1
 		return weight
 	end
 
