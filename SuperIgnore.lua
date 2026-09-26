@@ -98,6 +98,8 @@ local T_Time_TextOpt = {
 
 SI_NameFilter = {}
 SI_ChatFilter = {}
+-- filter -> short tag of the mod that installed it, shown as the auto-block reason
+SI_FilterSource = {}
 
 SI_MainFrame = nil
 SI_OptionsFrame = nil
@@ -333,9 +335,11 @@ SI_ModEnable = function(index)
 	SI_Global.Mods[mod.Name].Enabled = true
 
 	if mod.NameFilter then
+		SI_FilterSource[mod.NameFilter] = mod.Tag or mod.Name
 		SI_AddNameFilter(mod.NameFilter)
 	end
 	if mod.ChatFilter then
+		SI_FilterSource[mod.ChatFilter] = mod.Tag or mod.Name
 		SI_AddChatFilter(mod.ChatFilter)
 	end
 	if mod.OnEnable then
@@ -402,7 +406,7 @@ SI_FilterIsPlayerIgnored = function(name)
 
 	for _, filter in SI_NameFilter do
 		if filter(name) then
-			SI_CheckAutoBlock(name)
+			SI_CheckAutoBlock(name, SI_FilterSource[filter])
 			return true
 		end
 	end
@@ -417,7 +421,7 @@ SI_FilterIsChatIgnored = function(message, name, type)
 
 	for _, filter in SI_ChatFilter do
 		if filter(message, name, type) then
-			SI_CheckAutoBlock(name)
+			SI_CheckAutoBlock(name, SI_FilterSource[filter])
 			return true
 		end
 	end
@@ -611,10 +615,12 @@ SI_CheckInteractRules = function(name)
 	end
 end
 
-SI_CheckAutoBlock = function(name)
+-- Auto-block entries only list the player for review (log icon) until relog;
+-- they don't ignore them, only the filtered messages are hidden
+SI_CheckAutoBlock = function(name, source)
 	local index = SI_BannedGetIndex(name)
 	if not index then
-		SI_AddIgnore_New(name, true, TI_AUTOBLOCK)
+		SI_AddIgnore_New(name, true, TI_AUTOBLOCK, source)
 	end
 end
 
@@ -632,6 +638,10 @@ SI_IsChatIgnored = function(event, arg1, arg2, arg3, arg4)
 		end
 
 		if arg1 and type == "SYSTEM" then
+			if SI_IsCancelMessage(arg1) then
+				return true
+			end
+
 			local found, _, name = SI_StringFindPattern(arg1, ERR_IGNORE_REMOVED_S)
 			if found and name then
 				return true
@@ -735,6 +745,27 @@ SI_BubbleBlock = function(type, text)
 	bubbleFrame:Show()
 end
 
+------------- Cancel Messages
+
+-- Declining an ignored player's duel or trade makes the client print "Duel cancelled." /
+-- "Trade cancelled." Those two messages are swallowed for a moment after we cancel.
+local CANCEL_MESSAGE_TIME = 3
+local cancelMessageUntil = 0
+
+SI_SuppressCancelMessage = function()
+	cancelMessageUntil = GetTime() + CANCEL_MESSAGE_TIME
+end
+
+SI_IsCancelMessage = function(msg)
+	return GetTime() < cancelMessageUntil
+		and (msg == ERR_DUEL_CANCELLED or msg == ERR_TRADE_CANCELLED)
+end
+
+SI_UIErrorsFrame_AddMessage_New = function(self, msg, r, g, b, a, holdTime)
+	if SI_IsCancelMessage(msg) then return end
+	SI_UIErrorsFrame_AddMessage_Old(self, msg, r, g, b, a, holdTime)
+end
+
 ------------- Overrides
 
 SI_FriendsFrameIgnoreButton_OnClick_Old	= nil
@@ -747,6 +778,7 @@ SI_GetSelectedIgnore_Old				= nil
 SI_SetSelectedIgnore_Old				= nil
 SI_TradeFrame_OnEvent_Old				= nil
 SI_InitiateTrade_Old					= nil
+SI_UIErrorsFrame_AddMessage_Old			= nil
 SI_DropItemOnUnit_Old					= nil
 SI_StaticPopup_Show_Old					= nil
 SI_ChatFrame_OnEvent_Old				= nil
@@ -1001,6 +1033,7 @@ SI_StaticPopup_Show_New = function(which, text_arg1, text_arg2, data)
 	if SI_Global.BanOptDuel then
 		if which == "DUEL_REQUESTED" then
 			if SI_FilterIsPlayerIgnored(name) then
+				SI_SuppressCancelMessage()
 				CancelDuel()
 				SI_LogIgnore(SS.LogDuel, name)
 				return
@@ -1048,6 +1081,7 @@ SI_TradeFrame_OnEvent_New = function()
 		if event == "TRADE_SHOW" or event == "TRADE_UPDATE" then
 			local name = UnitName("NPC")
 			if name ~= tradeAllowedName and SI_FilterIsPlayerIgnored(name) then
+				SI_SuppressCancelMessage()
 				CloseTrade()
 				SI_LogIgnore(SS.LogTrade, name)
 				return
@@ -1129,6 +1163,9 @@ SI_HookFunctions = function()
 
 	SI_DropItemOnUnit_Old		= DropItemOnUnit
 	DropItemOnUnit				= SI_DropItemOnUnit_New
+
+	SI_UIErrorsFrame_AddMessage_Old	= UIErrorsFrame.AddMessage
+	UIErrorsFrame.AddMessage		= SI_UIErrorsFrame_AddMessage_New
 
 	SI_ChatFrame_OnEvent_Old	= ChatFrame_OnEvent
 	ChatFrame_OnEvent			= SI_ChatFrame_OnEvent_New

@@ -8,6 +8,7 @@ end
 
 local mod = {
 	["Name"] = "Special Snowflake Blocker",
+	["Tag"] = "name",
 	["Description"] = "Blocks messages sent by players who have special characters in their names.",
 	["OnEnable"] = nil,
 	["OnDisable"] = nil,

@@ -111,8 +111,9 @@ end
 
 m.mod = {
 	["Name"] = "Custom Filter",
+	["Tag"] = "filter",
 	["Description"] = "Blocks all messages containing a phrase.",
-	["Help"] = "Click 'Edit' and enter one phrase per line. Use * to match any text and ? to match any single character, e.g. 'buy*gold' or 'w?w'. Non-latin characters (accents, symbols, other alphabets) are ignored in both phrases and messages. Players that write messages containing one of these phrases will be temporarily ignored. Friends, party and guild members are never ignored.",
+	["Help"] = "Click 'Edit' and enter one phrase per line. Use * to match any text and ? to match any single character, e.g. 'buy*gold' or 'w?w'. Non-latin characters (accents, symbols, other alphabets) are ignored in both phrases and messages. Matching messages are hidden, the player is not ignored. They are listed as Auto-Block until relog, so you can review their messages via the log icon. Friends, party and guild members are never filtered.",
 	["OnEnable"] = m.updatePhrases,
 	["OnDisable"] = nil,
 	["CreateUI"] = m.createUI,

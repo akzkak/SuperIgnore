@@ -7,8 +7,9 @@ end
 
 local mod = {
 	["Name"] = "ChatSanitizer",
+	["Tag"] = "spam",
 	["Description"] = "Blocks gold spam and advertisements.",
-	["Help"] = "Knows how common spam messages look like, e.g. what words they are made of. Friends, party and guild members are never ignored. More info here:|n|nhttps://github.com/Aviana/ChatSanitizer",
+	["Help"] = "Knows how common spam messages look like, e.g. what words they are made of. Matching messages are hidden, the player is not ignored. They are listed as Auto-Block until relog, so you can review their messages via the log icon. Friends, party and guild members are never filtered. More info here:|n|nhttps://github.com/Aviana/ChatSanitizer",
 	["OnEnable"] = nil,
 	["OnDisable"] = nil,
 	["NameFilter"] = nil,
