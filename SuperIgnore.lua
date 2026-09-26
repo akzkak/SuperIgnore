@@ -48,6 +48,12 @@ local SS = {
 	["TimeAuto"]			= "Auto-Block",
 
 	["PopupRemove"]			= "Remove",
+
+	["MenuDuration"]		= "Ignore Duration",
+	["MenuReason"]			= "Set Reason...",
+	["MenuUnignore"]		= "Unignore",
+	["PopupReason"]			= "Ignore reason for %s:",
+	["ChatDuration"]		= "%s ignore duration changed to: %s.",
 }
 
 local T_RELOG		= 1
@@ -415,8 +421,8 @@ SI_IsTimeSpecial = function(t)
 	return t == TI_FOREVER or t == TI_RELOG or t == TI_AUTOBLOCK
 end
 
-SI_CalcBanTime = function()
-	local t = T_Time[SI_Global.BanDuration]
+SI_CalcBanTime = function(option)
+	local t = T_Time[option or SI_Global.BanDuration]
 	if SI_IsTimeSpecial(t) then
 		return t
 	else
@@ -933,8 +939,135 @@ SI_ReplaceOldIgnores = function()
 	end
 end
 
+-- Player whose reason is being edited, and the popup doing it
+SI_ReasonTarget = nil
+SI_ReasonDialog = nil
+
+StaticPopupDialogs["SI_SetReason"] = {
+	text = SS.PopupReason,
+	button1 = TEXT(ACCEPT),
+	button2 = TEXT(CANCEL),
+	hasEditBox = 1,
+	maxLetters = 64,
+	timeout = 0,
+	whileDead = 1,
+	hideOnEscape = 1,
+	OnShow = function()
+		local box = getglobal(this:GetName() .. "EditBox")
+		local index = SI_BannedGetIndex(SI_ReasonTarget)
+		box:SetText(index and SI_BannedGetReason(index) or "")
+		box:HighlightText()
+		box:SetFocus()
+	end,
+	OnAccept = function()
+		if SI_ReasonDialog then
+			SI_BannedChangeReason(SI_ReasonTarget, getglobal(SI_ReasonDialog:GetName() .. "EditBox"):GetText())
+		end
+	end,
+	EditBoxOnEnterPressed = function()
+		SI_BannedChangeReason(SI_ReasonTarget, this:GetText())
+		this:GetParent():Hide()
+	end,
+	EditBoxOnEscapePressed = function()
+		this:GetParent():Hide()
+	end,
+}
+
+SI_BannedChangeDuration = function(name, option)
+	local index = SI_BannedGetIndex(name)
+	if not index then return end
+
+	local banTime = SI_CalcBanTime(option)
+	SI_BannedSetDuration(index, banTime)
+	SI_BannedSortByTime()
+	SI_RealmSpecific.BannedSelected = SI_BannedGetIndex(name)
+	IgnoreList_Update()
+	SI_Print(string.format(SS.ChatDuration, name, SI_FormatTimeNoColor(banTime)))
+end
+
+SI_BannedChangeReason = function(name, reason)
+	local index = SI_BannedGetIndex(name)
+	if not index then return end
+
+	reason = string.gsub(reason or "", "^%s*(.-)%s*$", "%1")
+	if reason == "" then reason = nil end
+	SI_BannedSetReason(index, reason)
+	IgnoreList_Update()
+end
+
+local rightClickName = nil
+
+local rightClickMenuInit = function()
+	local name = rightClickName
+	local index = name and SI_BannedGetIndex(name)
+	if not index then return end
+	local info
+
+	if UIDROPDOWNMENU_MENU_LEVEL == 2 then
+		local current = SI_BannedGetDuration(index)
+		for i = 1, table.getn(T_Time_TextOpt) do
+			local option = i
+			info = {}
+			info.text = T_Time_TextOpt[i]
+			info.checked = SI_IsTimeSpecial(T_Time[i]) and current == T_Time[i]
+			info.func = function()
+				SI_BannedChangeDuration(name, option)
+				CloseDropDownMenus()
+			end
+			UIDropDownMenu_AddButton(info, 2)
+		end
+		return
+	end
+
+	info = {}
+	info.text = name
+	info.isTitle = 1
+	info.notCheckable = 1
+	UIDropDownMenu_AddButton(info)
+
+	info = {}
+	info.text = SS.MenuDuration
+	info.hasArrow = 1
+	info.value = "SI_DURATION"
+	info.notCheckable = 1
+	UIDropDownMenu_AddButton(info)
+
+	info = {}
+	info.text = SS.MenuReason
+	info.notCheckable = 1
+	info.func = function()
+		SI_ReasonTarget = name
+		SI_ReasonDialog = StaticPopup_Show("SI_SetReason", name)
+	end
+	UIDropDownMenu_AddButton(info)
+
+	info = {}
+	info.text = SS.MenuUnignore
+	info.notCheckable = 1
+	info.func = function()
+		SI_DelIgnore_New(name)
+	end
+	UIDropDownMenu_AddButton(info)
+
+	info = {}
+	info.text = TEXT(CANCEL)
+	info.notCheckable = 1
+	info.func = function() CloseDropDownMenus() end
+	UIDropDownMenu_AddButton(info)
+end
+
 SI_RightClickMenu = function(index)
-	local name = SI_BannedGetName(index)
+	if not SI_RealmSpecific.BannedPlayers[index] then return end
+	rightClickName = SI_BannedGetName(index)
+
+	SI_RealmSpecific.BannedSelected = index
+	IgnoreList_Update()
+
+	if not SI_IgnoreMenu then
+		CreateFrame("Frame", "SI_IgnoreMenu", UIParent, "UIDropDownMenuTemplate")
+	end
+	UIDropDownMenu_Initialize(SI_IgnoreMenu, rightClickMenuInit, "MENU")
+	ToggleDropDownMenu(1, nil, SI_IgnoreMenu, "cursor")
 end
 
 ------------- Log
