@@ -110,6 +110,32 @@ end
 
 local sections = {}
 
+table.insert(sections, { "Spam list", function()
+	SI_AddIgnore_New("Dummysoft", true, TI_FOREVER, "Summoning ads", true, OPT_FOREVER)
+	local index = SI_BannedGetIndex("Dummysoft")
+	check("Spam mode is saved", index and SI_BannedIsSoft(index))
+	check("Spam entries are not name blocks", not SI_FilterIsPlayerIgnored("Dummysoft"))
+	SI_Global.BanOptPublic = false
+	check("Public ads are blocked even with public filtering off", chat("CHAT_MSG_CHANNEL", "Summoning 4g", "Dummysoft", "6. World"))
+	local allowed = {"WHISPER", "PARTY", "RAID", "RAID_LEADER", "RAID_WARNING", "GUILD", "OFFICER", "SAY", "YELL", "EMOTE", "TEXT_EMOTE", "BATTLEGROUND"}
+	for _, kind in allowed do
+		check("Spam mode allows " .. kind, not chat("CHAT_MSG_" .. kind, "hello", "Dummysoft"))
+	end
+	local sent
+	stub(G, "SI_SendChatMessage_Old", function() sent = true end)
+	SI_Global.WhisperBlock, SI_Global.WhisperUnignore = true, true
+	SI_SendChatMessage_New("hello", "WHISPER", nil, "dummysoft")
+	check("Outgoing whispers remain allowed", sent)
+	check("Whispering retains the Spam entry", SI_BannedIsSoft(SI_BannedGetIndex("Dummysoft")))
+	SI_BannedChangeMode("Dummysoft", false)
+	check("Switching to Ignore enables name blocking", SI_FilterIsPlayerIgnored("Dummysoft"))
+	SI_BannedChangeMode("Dummysoft", true)
+	check("Switching back restores Spam mode", SI_BannedIsSoft(SI_BannedGetIndex("Dummysoft")))
+	SI_BannedSetDuration(SI_BannedGetIndex("Dummysoft"), time() - 1)
+	SI_BannedCheckTimes(true)
+	check("Timed Spam entries expire", not SI_BannedGetIndex("Dummysoft"))
+end })
+
 table.insert(sections, { "Ignore list", function(printed)
 	SI_Global.BanDuration = OPT_FOREVER
 	SI_AddIgnore_New("dUMMYONE")

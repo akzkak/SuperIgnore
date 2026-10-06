@@ -16,6 +16,21 @@ the SuperIgnore panels, and adds the ignore only after you press **Accept** (or
 Enter). **Cancel** or Escape closes it without adding the player. Automated
 blocks retain their configured durations.
 
+Choose **Ignore** or **Spam** in the popup. Ignore uses your configured ignore
+filters. Spam hides that player's channel messages, including World,
+General, Trade and LookingForGroup, even if public-channel filtering is disabled.
+Whispers, party/raid, guild/officer, battleground chat, Say/Yell, emotes, trades,
+duels and invitations remain available. Whispering a player on the Spam list does not
+remove them from that list. Both modes support the same durations and reasons.
+
+The ignore list groups players under **Ignore** and **Spam**, with
+counts for each section. Right-click an entry to switch its mode. Existing saved
+ignores remain in Ignore mode.
+
+The **Ignore Settings** section applies to Ignore mode only. Players on the Spam
+list always have their channel messages hidden, while private and group messages
+remain visible. The whisper settings also apply only to Ignore mode.
+
 ## Chat Commands
 
 The /ignore command is modified so you can include an ignore reason:

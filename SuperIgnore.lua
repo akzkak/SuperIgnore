@@ -7,10 +7,11 @@ local SS = {
 	["AddonVersion"] 		= version,
 
 	["TextGeneral"] 		= "General",
-	["TextOptions"] 		= "Ignore Filter",
+	["TextOptions"] 		= "Ignore Settings",
+	["TextIgnoreOnly"]	= "Applies to Ignore mode only.",
 	["TextDuration"]		= "Default Ignore Time",
-	["TextWhisperBlock"]	= "Do not let me whisper ignored players",
-	["TextWhisperUnignore"]	= "Unignore players if I whisper them",
+	["TextWhisperBlock"]	= "Prevent whispers to ignored players",
+	["TextWhisperUnignore"]	= "Remove Ignore when I whisper",
 
 	["TextModules"]			= "Modules",
 	["TextEdit"]			= "Edit",
@@ -52,6 +53,13 @@ local SS = {
 	["PopupIgnore"]			= "Ignore %s",
 	["PopupDuration"]		= "Duration",
 	["PopupReasonLabel"]	= "Reason (optional)",
+	["ModeFull"]			= "Ignore",
+	["ModeSoft"]			= "Spam",
+	["SectionFull"]			= "Ignore",
+	["SectionSoft"]			= "Spam",
+	["MenuMakeFull"]		= "Switch to Ignore",
+	["MenuMakeSoft"]		= "Move to Spam",
+	["ChatSoftIgnored"]		= "%s is now on the Spam list (public channels only). Duration: %s.",
 	["TimeAuto"]			= "Auto-Block",
 
 	["PopupRemove"]			= "Remove",
@@ -81,6 +89,7 @@ local B_NAME		= 1
 local B_DURATION	= 2
 local B_REASON		= 4
 local B_OPTION		= 5 -- duration menu option the ignore was set with, nil if set directly
+local B_SOFT			= 6 -- true for public-channel-only ignores; old entries remain full
 
 local T_Time = {
 	TI_RELOG,
@@ -107,6 +116,7 @@ SI_Shared = {
 	B_NAME			= B_NAME,
 	B_DURATION		= B_DURATION,
 	B_REASON		= B_REASON,
+	B_SOFT			= B_SOFT,
 	T_Time			= T_Time,
 	T_Time_TextOpt	= T_Time_TextOpt,
 	T_ASK			= T_ASK,
@@ -247,6 +257,8 @@ SI_FilterIsPlayerIgnored = function(name)
 	if name == UnitName("player") then
 		return false
 	end
+	local index = SI_BannedGetIndex(name)
+	if index and SI_BannedIsSoft(index) then return false end
 
 	for _, filter in SI_NameFilter do
 		if filter(name) then
@@ -444,6 +456,19 @@ end
 SI_BannedSetOption = function(index, option)
 	SI_RealmSpecific.BannedPlayers[index][B_OPTION] = option
 end
+
+SI_BannedIsSoft = function(index)
+	local banned = SI_RealmSpecific.BannedPlayers[index]
+	return banned and banned[B_SOFT] == true or false
+end
+
+SI_BannedChangeMode = function(name, soft)
+	local index = SI_BannedGetIndex(name)
+	if not index then return end
+	SI_RealmSpecific.BannedPlayers[index][B_SOFT] = soft and true or nil
+	SI_ChatCacheReset()
+	IgnoreList_Update()
+end
 SI_BannedGetName = function(index)
 	return SI_RealmSpecific.BannedPlayers[index][B_NAME]
 end
@@ -565,7 +590,14 @@ isChatIgnored = function(event, arg1, arg2, arg3, arg4)
 			end
 		end
 
-		if arg1 and arg2 and SI_IsChannelBanned(chatType) then
+		local index = arg2 and SI_BannedGetIndex(arg2)
+		local soft = index and SI_BannedIsSoft(index)
+		if arg1 and soft and chatType == "CHANNEL" then
+			SI_LogIgnore(arg1, arg2, source)
+			return true
+		end
+		-- A soft ignore must never become a full block through the name filters.
+		if arg1 and arg2 and not soft and SI_IsChannelBanned(chatType) then
 			if SI_FilterIsPlayerIgnored(arg2) or SI_FilterIsChatIgnored(arg1, arg2, chatType) then
 				SI_LogIgnore(arg1, arg2, source)
 				SI_BubbleBlock(chatType, arg1)
@@ -629,7 +661,7 @@ end
 -- Set by every ignore change; the unit menu hook uses it to skip clicks already handled
 SI_IgnoreHandled = false
 
-SI_AddIgnore_New = function(name, quiet, banTime, reason)
+SI_AddIgnore_New = function(name, quiet, banTime, reason, soft, durationOption)
 	SI_IgnoreHandled = true
 	if not name then return end
 
@@ -639,7 +671,7 @@ SI_AddIgnore_New = function(name, quiet, banTime, reason)
 		return
 	end
 
-	local option
+	local option = durationOption
 	if not banTime then
 		option = SI_Global.BanDuration
 		if option == T_ASK then
@@ -657,16 +689,21 @@ SI_AddIgnore_New = function(name, quiet, banTime, reason)
 		SI_BannedSetDuration(index, banTime)
 		SI_BannedSetReason(index, reason)
 		SI_BannedSetOption(index, option)
+		SI_RealmSpecific.BannedPlayers[index][B_SOFT] = soft and true or nil
 	else
-		table.insert(SI_RealmSpecific.BannedPlayers, {name, banTime, nil, reason, option})
+		table.insert(SI_RealmSpecific.BannedPlayers, {name, banTime, nil, reason, option, soft and true or nil})
 		SI_BannedIndexChanged()
 	end
 
 	SI_BannedSortByTime()
+	SI_ChatCacheReset()
 	IgnoreList_Update()
 
 	if not quiet then
-		if reason then
+		if soft then
+			SI_Print(string.format(SS.ChatSoftIgnored, name, SI_FormatTimeNoColor(banTime))
+				.. (reason and (" Reason: " .. reason) or ""))
+		elseif reason then
 			SI_Print(string.format(SS.ChatIgnoredReason,
 				name, SI_FormatTimeNoColor(banTime), reason))
 		else
@@ -699,6 +736,7 @@ SI_DelIgnore_New = function(name, quiet)
 	if index then
 		 table.remove(SI_RealmSpecific.BannedPlayers, index)
 		 SI_BannedIndexChanged()
+		 SI_ChatCacheReset()
 		 SI_FixBannedSelected()
 		 IgnoreList_Update()
 
@@ -709,6 +747,11 @@ SI_DelIgnore_New = function(name, quiet)
 end
 
 SI_GetIgnoreName_New = function(index)
+	if SI_IgnoreListRendering then
+		local row = SI_IgnoreListRows[index]
+		if row and row.title then return row.title end
+		index = row and row.index
+	end
 	local banned = SI_RealmSpecific.BannedPlayers[index]
 	if banned then
 		-- Plain name, since other addons compare it; the ignore list adds the reason itself
@@ -719,14 +762,25 @@ SI_GetIgnoreName_New = function(index)
 end
 
 SI_GetNumIgnores_New = function()
+	if SI_IgnoreListRendering then return table.getn(SI_IgnoreListRows) end
 	return table.getn(SI_RealmSpecific.BannedPlayers)
 end
 
 SI_GetSelectedIgnore_New = function()
+	if SI_IgnoreListRendering then
+		for i = 1, table.getn(SI_IgnoreListRows) do
+			if SI_IgnoreListRows[i].index == SI_RealmSpecific.BannedSelected then return i end
+		end
+		return 0
+	end
 	return SI_RealmSpecific.BannedSelected
 end
 
 SI_SetSelectedIgnore_New = function(index)
+	if SI_IgnoreListRendering then
+		local row = SI_IgnoreListRows[index]
+		index = row and row.index or 0
+	end
 	SI_RealmSpecific.BannedSelected = index
 end
 
@@ -832,7 +886,7 @@ SI_SendChatMessage_New = function(msg, chatType, lang, channel)
 	local name = chatType == "WHISPER" and channel and SI_FixPlayerName(channel)
 	-- Only players I ignored myself; filters (auto-block, name filters) don't stop my whispers
 	local index = name and SI_BannedGetIndex(name)
-	if index and SI_BannedGetDuration(index) ~= TI_AUTOBLOCK then
+	if index and not SI_BannedIsSoft(index) and SI_BannedGetDuration(index) ~= TI_AUTOBLOCK then
 		if SI_CheckInteractRules(name) then
 			return
 		end
@@ -907,7 +961,7 @@ end
 -- The ignore list itself, as a name filter; Auto-Block entries are listed only, not ignored
 SI_BanListFilter = function(name)
 	local index = SI_BannedGetIndex(name)
-	if index and SI_BannedGetDuration(index) ~= TI_AUTOBLOCK then
+	if index and not SI_BannedIsSoft(index) and SI_BannedGetDuration(index) ~= TI_AUTOBLOCK then
 		return true
 	end
 end

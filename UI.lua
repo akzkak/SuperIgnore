@@ -522,9 +522,33 @@ end)
 -- Right-aligned, dimmed duration on each ignore list row
 SI_IgnoreList_Update_Old = nil
 SI_IgnoreList_Update_New = function()
+	-- Section headings exist only while drawing. Public ignore APIs still return
+	-- real players, and clickable rows retain their real saved-list indices.
+	SI_IgnoreListRows = {}
+	for section = 1, 2 do
+		local soft = section == 2
+		local count = 0
+		local heading = {title = soft and SS.SectionSoft or SS.SectionFull}
+		table.insert(SI_IgnoreListRows, heading)
+		for index = 1, table.getn(SI_RealmSpecific.BannedPlayers) do
+			if SI_BannedIsSoft(index) == soft then
+				table.insert(SI_IgnoreListRows, {index = index})
+				count = count + 1
+			end
+		end
+		heading.title = heading.title .. " (" .. count .. ")"
+	end
+	if not SI_RealmSpecific.BannedPlayers[SI_RealmSpecific.BannedSelected] then
+		SI_RealmSpecific.BannedSelected = table.getn(SI_RealmSpecific.BannedPlayers) > 0 and 1 or 0
+	end
 	-- Always run the stock update: it also hides the scrollbar (shown by default), and the
 	-- default UI calls it just before showing the list
+	SI_IgnoreListRendering = true
 	SI_IgnoreList_Update_Old()
+	SI_IgnoreListRendering = nil
+	-- Stop Ignore reads this field directly, outside the drawing context.
+	FriendsFrame.selectedIgnore = SI_RealmSpecific.BannedSelected
+	if FriendsFrame.selectedIgnore == 0 then FriendsFrameStopIgnoreButton:Disable() end
 	-- Our row extras only while visible; the list redraws itself when shown (SI_CreateFrames)
 	if not IgnoreListFrame:IsVisible() then return end
 	local unmeasured = false
@@ -548,8 +572,34 @@ SI_IgnoreList_Update_New = function()
 				button.siDuration = button:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 				button.siDuration:SetPoint("RIGHT", log, "LEFT", -4, 0)
 				button.siDuration:SetJustifyH("RIGHT")
+				-- Separate header widgets keep their typography out of player rows
+				-- when the stock scrolling list reuses the same buttons.
+				button.siHeading = button:CreateFontString(nil, "OVERLAY")
+				button.siHeading:SetPoint("CENTER", button, "CENTER", 0, 0)
+				local _, entryFontSize = ignoreRowNameText(button):GetFont()
+				button.siHeading:SetFont("Fonts\\FRIZQT__.TTF", entryFontSize or 12, "OUTLINE")
+				button.siHeading:SetTextColor(1, .82, 0)
+				SI_Skin("font", button.siHeading)
+				button.siHeadingBand = button:CreateTexture(nil, "BACKGROUND")
+				button.siHeadingBand:SetAllPoints(button)
+				button.siHeadingBand:SetTexture(1, 1, 1, .03)
 			end
-			local banned = SI_RealmSpecific.BannedPlayers[button:GetID()]
+			local row = SI_IgnoreListRows[button:GetID()]
+			local index = row and row.index
+			local banned = index and SI_RealmSpecific.BannedPlayers[index]
+			button:SetID(index or 0)
+			button:EnableMouse(index and true or false)
+			local text = ignoreRowNameText(button)
+			if row and row.title then
+				if text then text:Hide() end
+				button.siHeading:SetText(row.title)
+				button.siHeading:Show()
+				button.siHeadingBand:Show()
+			else
+				if text then text:Show() end
+				button.siHeading:Hide()
+				button.siHeadingBand:Hide()
+			end
 
 			local offset = ignoreRowRightOffset(button)
 			if not offset then
@@ -601,7 +651,7 @@ SI_ShowIgnorePrompt = function(name, reason)
 	if not ignorePrompt then
 		local f = CreateFrame("Frame", "SI_IgnorePrompt", UIParent)
 		f:SetWidth(280)
-		f:SetHeight(154)
+		f:SetHeight(182)
 		f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 		f:SetFrameStrata("DIALOG")
 		f:EnableMouse(true)
@@ -614,11 +664,24 @@ SI_ShowIgnorePrompt = function(name, reason)
 		SI_Skin("window", f)
 		table.insert(UISpecialFrames, "SI_IgnorePrompt")
 		f.title = SI_FrameCreateHeader(f, "", 12, -14)
+		local full = SI_FrameCreateButton("SI_IgnorePromptFull", f, SS.ModeFull, 110, "TOPLEFT", 18, -36,
+			function()
+				f.soft = false
+				f.full:SetText("[" .. SS.ModeFull .. "]")
+				f.softButton:SetText(SS.ModeSoft)
+			end)
+		local soft = SI_FrameCreateButton("SI_IgnorePromptSoft", f, SS.ModeSoft, 110, "TOPRIGHT", -18, -36,
+			function()
+				f.soft = true
+				f.full:SetText(SS.ModeFull)
+				f.softButton:SetText("[" .. SS.ModeSoft .. "]")
+			end)
+		f.full, f.softButton = full, soft
 		local durationLabel = SI_FrameCreateHeader(f, SS.PopupDuration, 11, -45)
 		durationLabel:ClearAllPoints()
-		durationLabel:SetPoint("LEFT", f, "TOPLEFT", 18, -48)
+		durationLabel:SetPoint("LEFT", f, "TOPLEFT", 18, -76)
 		local dd = CreateFrame("Button", "SI_IgnorePromptDuration", f, "UIDropDownMenuTemplate")
-		dd:SetPoint("TOPLEFT", f, "TOPLEFT", 80, -34)
+		dd:SetPoint("TOPLEFT", f, "TOPLEFT", 80, -62)
 		UIDropDownMenu_SetWidth(140, dd)
 		UIDropDownMenu_JustifyText("LEFT", dd)
 		UIDropDownMenu_Initialize(dd, function()
@@ -637,9 +700,9 @@ SI_ShowIgnorePrompt = function(name, reason)
 			end
 		end)
 		SI_Skin("dropdown", dd)
-		SI_FrameCreateHeader(f, SS.PopupReasonLabel, 11, -76)
+		SI_FrameCreateHeader(f, SS.PopupReasonLabel, 11, -104)
 		local box = CreateFrame("EditBox", "SI_IgnorePromptReason", f)
-		box:SetPoint("TOP", f, "TOP", 0, -92)
+		box:SetPoint("TOP", f, "TOP", 0, -120)
 		box:SetWidth(244)
 		box:SetHeight(22)
 		box:SetAutoFocus(false)
@@ -655,13 +718,11 @@ SI_ShowIgnorePrompt = function(name, reason)
 		box:SetBackdropColor(0, 0, 0, .5)
 		SI_Skin("editbox", box)
 		local accept = function()
-			local target, option, text = f.target, f.option, box:GetText()
+			local target, option, text, soft = f.target, f.option, box:GetText(), f.soft
 			f:Hide()
 			if not target then return end
 			text = string.gsub(string.gsub(text, "^%s+", ""), "%s+$", "")
-			SI_AddIgnore_New(target, false, SI_CalcBanTime(option), text ~= "" and text or nil)
-			local index = SI_BannedGetIndex(target)
-			if index then SI_BannedSetOption(index, option) end
+			SI_AddIgnore_New(target, false, SI_CalcBanTime(option), text ~= "" and text or nil, soft, option)
 		end
 		box:SetScript("OnEnterPressed", accept)
 		box:SetScript("OnEscapePressed", function() f:Hide() end)
@@ -679,6 +740,9 @@ SI_ShowIgnorePrompt = function(name, reason)
 	CloseDropDownMenus()
 	ignorePrompt.target = name
 	ignorePrompt.option = SI_Shared.T_FOREVER
+	ignorePrompt.soft = false
+	ignorePrompt.full:SetText("[" .. SS.ModeFull .. "]")
+	ignorePrompt.softButton:SetText(SS.ModeSoft)
 	ignorePrompt.title:SetText(string.format(SS.PopupIgnore, name))
 	UIDropDownMenu_SetSelectedID(ignorePrompt.dropdown, ignorePrompt.option)
 	-- Vanilla dropdowns share menu rows with the player context menu. Set the
@@ -764,6 +828,15 @@ local rightClickMenuInit = function()
 	UIDropDownMenu_AddButton(info)
 
 	info = {}
+	info.text = SI_BannedIsSoft(index) and SS.MenuMakeFull or SS.MenuMakeSoft
+	info.notCheckable = 1
+	info.func = function()
+		SI_BannedChangeMode(name, not SI_BannedIsSoft(index))
+		CloseDropDownMenus()
+	end
+	UIDropDownMenu_AddButton(info)
+
+	info = {}
 	info.text = SS.MenuReason
 	info.notCheckable = 1
 	info.func = function()
@@ -846,6 +919,14 @@ SI_CreateOptionsFrame = function()
 
 	SI_FrameCreateHeader(f, SS.TextOptions, 11, pad)
 	pad = pad - 15
+	local ignoreOnly = f:CreateFontString(nil, "OVERLAY")
+	ignoreOnly:SetPoint("TOP", f, "TOP", 0, pad)
+	ignoreOnly:SetFont("Fonts\\FRIZQT__.TTF", 10)
+	SI_Skin("font", ignoreOnly, 10)
+	ignoreOnly:SetTextColor(.6, .6, .6)
+	ignoreOnly:SetText(SS.TextIgnoreOnly)
+	SI_OptionsFrameAddLabel(ignoreOnly)
+	pad = pad - 16
 
 	local options = {
 		{"BanOptWhisper",	SS.BanWhisper,	15},
