@@ -48,6 +48,10 @@ local SS = {
 	["TimeWeek"]			= "Week",
 	["TimeMonth"]			= "Month",
 	["TimeForever"]			= "Forever",
+	["TimeAsk"]				= "Ask",
+	["PopupIgnore"]			= "Ignore %s",
+	["PopupDuration"]		= "Duration",
+	["PopupReasonLabel"]	= "Reason (optional)",
 	["TimeAuto"]			= "Auto-Block",
 
 	["PopupRemove"]			= "Remove",
@@ -66,6 +70,7 @@ local T_WEEK		= 4
 local T_MONTH		= 5
 local T_FOREVER		= 6
 local T_AUTOBLOCK	= 7
+local T_ASK			= 8 -- setting only; never a stored ignore duration
 
 local TI_RELOG		= -1
 local TI_FOREVER	= 1e30 -- lol
@@ -104,6 +109,8 @@ SI_Shared = {
 	B_REASON		= B_REASON,
 	T_Time			= T_Time,
 	T_Time_TextOpt	= T_Time_TextOpt,
+	T_ASK			= T_ASK,
+	T_FOREVER		= T_FOREVER,
 }
 
 ------------- Global
@@ -635,6 +642,13 @@ SI_AddIgnore_New = function(name, quiet, banTime, reason)
 	local option
 	if not banTime then
 		option = SI_Global.BanDuration
+		if option == T_ASK then
+			if not quiet then
+				SI_ShowIgnorePrompt(name, reason)
+				return
+			end
+			option = T_FOREVER
+		end
 		banTime = SI_CalcBanTime(option)
 	end
 
@@ -1002,7 +1016,7 @@ local SETTINGS_VERSION = 1
 local SI_Defaults = {
 	WhisperBlock	= false,
 	WhisperUnignore	= true,
-	BanDuration		= T_FOREVER,
+	BanDuration		= T_ASK,
 
 	BanOptWhisper	= true,
 	BanOptParty		= false,

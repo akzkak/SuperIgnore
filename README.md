@@ -8,6 +8,13 @@
 - Works with Prat, WIM and WhisperFu
 - Automatically matches the [pfUI](https://github.com/brues-code/pfUI) look when pfUI is installed
 
+**Default Ignore Time** starts at **Ask** on fresh installs. This first dropdown
+option lets you choose a duration and optional reason
+when ignoring a player. The popup starts at **Forever**, uses the same theme as
+the SuperIgnore panels, and adds the ignore only after you press **Accept** (or
+Enter). **Cancel** or Escape closes it without adding the player. Automated
+blocks retain their configured durations.
+
 ## Chat Commands
 
 The /ignore command is modified so you can include an ignore reason:

@@ -29,6 +29,9 @@ local skinApply = function(w)
 		obj:SetBackdrop(nil)
 		SI_PF.CreateBackdrop(obj, nil, nil, .75)
 		SI_PF.CreateBackdropShadow(obj)
+	elseif kind == "editbox" then
+		obj:SetBackdrop(nil)
+		SI_PF.CreateBackdrop(obj)
 	elseif kind == "font" then
 		obj:SetFont(pfUI.font_default, w[3] or pfUI_config.global.font_size, "OUTLINE")
 	elseif kind == "checkbox" then
@@ -573,6 +576,99 @@ end
 
 ------------- Right-Click Menu
 
+-- A separate window uses the same skin registry as the main panels, including
+-- when pfUI becomes ready after this window was created.
+local ignorePrompt
+
+SI_ShowIgnorePrompt = function(name, reason)
+	if not ignorePrompt then
+		local f = CreateFrame("Frame", "SI_IgnorePrompt", UIParent)
+		f:SetWidth(280)
+		f:SetHeight(154)
+		f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+		f:SetFrameStrata("DIALOG")
+		f:EnableMouse(true)
+		f:SetBackdrop({
+			bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background", tile = true, tileSize = 32,
+			edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+			insets = {left = 11, right = 12, top = 12, bottom = 11},
+		})
+		f:Hide()
+		SI_Skin("window", f)
+		table.insert(UISpecialFrames, "SI_IgnorePrompt")
+		f.title = SI_FrameCreateHeader(f, "", 12, -14)
+		local durationLabel = SI_FrameCreateHeader(f, SS.PopupDuration, 11, -45)
+		durationLabel:ClearAllPoints()
+		durationLabel:SetPoint("LEFT", f, "TOPLEFT", 18, -48)
+		local dd = CreateFrame("Button", "SI_IgnorePromptDuration", f, "UIDropDownMenuTemplate")
+		dd:SetPoint("TOPLEFT", f, "TOPLEFT", 80, -34)
+		UIDropDownMenu_SetWidth(140, dd)
+		UIDropDownMenu_JustifyText("LEFT", dd)
+		UIDropDownMenu_Initialize(dd, function()
+			for i = 1, table.getn(T_Time_TextOpt) do
+				local option = i
+				local info = {}
+				info.text = T_Time_TextOpt[i]
+				info.value = i
+				info.checked = f.option == i
+				info.func = function()
+					f.option = option
+					UIDropDownMenu_SetSelectedID(dd, option)
+				end
+				UIDropDownMenu_AddButton(info, 1)
+			end
+		end)
+		SI_Skin("dropdown", dd)
+		SI_FrameCreateHeader(f, SS.PopupReasonLabel, 11, -76)
+		local box = CreateFrame("EditBox", "SI_IgnorePromptReason", f)
+		box:SetPoint("TOP", f, "TOP", 0, -92)
+		box:SetWidth(244)
+		box:SetHeight(22)
+		box:SetAutoFocus(false)
+		box:SetMaxLetters(64)
+		box:SetFontObject(GameFontHighlightSmall)
+		SI_Skin("font", box)
+		box:SetTextInsets(6, 6, 0, 0)
+		box:SetBackdrop({
+			bgFile = "Interface\\Buttons\\WHITE8X8",
+			edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12,
+			insets = {left = 3, right = 3, top = 3, bottom = 3},
+		})
+		box:SetBackdropColor(0, 0, 0, .5)
+		SI_Skin("editbox", box)
+		local accept = function()
+			local target, option, text = f.target, f.option, box:GetText()
+			f:Hide()
+			if not target then return end
+			text = string.gsub(string.gsub(text, "^%s+", ""), "%s+$", "")
+			SI_AddIgnore_New(target, false, SI_CalcBanTime(option), text ~= "" and text or nil)
+			local index = SI_BannedGetIndex(target)
+			if index then SI_BannedSetOption(index, option) end
+		end
+		box:SetScript("OnEnterPressed", accept)
+		box:SetScript("OnEscapePressed", function() f:Hide() end)
+		f:SetScript("OnHide", function()
+			box:ClearFocus()
+			f.target = nil
+			CloseDropDownMenus()
+		end)
+		SI_FrameCreateButton("SI_IgnorePromptAccept", f, TEXT(ACCEPT), 110, "BOTTOMLEFT", 18, 14, accept)
+		SI_FrameCreateButton("SI_IgnorePromptCancel", f, TEXT(CANCEL), 110, "BOTTOMRIGHT", -18, 14,
+			function() f:Hide() end)
+		f.box, f.dropdown = box, dd
+		ignorePrompt = f
+	end
+	CloseDropDownMenus()
+	ignorePrompt.target = name
+	ignorePrompt.option = SI_Shared.T_FOREVER
+	ignorePrompt.title:SetText(string.format(SS.PopupIgnore, name))
+	UIDropDownMenu_SetSelectedID(ignorePrompt.dropdown, ignorePrompt.option)
+	ignorePrompt.box:SetText(reason or "")
+	ignorePrompt:Show()
+	ignorePrompt.box:SetFocus()
+	ignorePrompt.box:HighlightText()
+end
+
 -- Player whose reason is being edited, and the popup doing it
 SI_ReasonTarget = nil
 SI_ReasonDialog = nil
@@ -762,18 +858,20 @@ SI_CreateOptionsFrame = function()
 	UIDropDownMenu_JustifyText("LEFT", dd)
 	UIDropDownMenu_Initialize(dd, function()
 		local info = {}
-		for i = 1, table.getn(T_Time_TextOpt) do
-			info.text = T_Time_TextOpt[i]
-			info.value = i
+		for i = 1, table.getn(T_Time_TextOpt) + 1 do
+			local option = i == 1 and SI_Shared.T_ASK or i - 1
+			info.text = i == 1 and SS.TimeAsk or T_Time_TextOpt[option]
+			info.value = option
 			info.func = function()
 				UIDropDownMenu_SetSelectedID(dd, this:GetID())
-				SI_Global.BanDuration = this:GetID()
+				SI_Global.BanDuration = option
 			end
 			info.checked = nil
 			UIDropDownMenu_AddButton(info, 1)
 		end
 	end)
-	UIDropDownMenu_SetSelectedID(dd, SI_Global.BanDuration)
+	UIDropDownMenu_SetSelectedID(dd, SI_Global.BanDuration == SI_Shared.T_ASK
+		and 1 or SI_Global.BanDuration + 1)
 	SI_Skin("dropdown", dd)
 
 	SI_OptionsFramePad = pad - 35
