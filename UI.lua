@@ -73,7 +73,7 @@ end
 local skinActivate = function()
 	if SI_PF then return end
 	SI_PF = pfUI.api
-	for _, w in SI_SkinWidgets do
+	for _, w in pairs(SI_SkinWidgets) do
 		skinApply(w)
 	end
 	if IgnoreListFrame:IsVisible() then SI_SkinPlaceShowButton(SI_OpenButton) end
@@ -389,7 +389,7 @@ bubbleFrame:SetScript("OnUpdate", function()
 	local now = GetTime()
 	local active = false
 
-	for text, expiry in bubbleTexts do
+	for text, expiry in pairs(bubbleTexts) do
 		if expiry < now then
 			bubbleTexts[text] = nil
 		else
@@ -398,7 +398,7 @@ bubbleFrame:SetScript("OnUpdate", function()
 	end
 
 	-- Keep hidden bubbles invisible, give recycled ones their alpha back
-	for frame, text in bubbleHidden do
+	for frame, text in pairs(bubbleHidden) do
 		if frame:IsShown() and bubbleGetText(frame) == text then
 			frame:SetAlpha(0)
 			active = true
@@ -1054,7 +1054,7 @@ end
 -- Fits the frame to its widest row, so labels never wrap (font depends on pfUI)
 SI_OptionsFrameUpdateWidth = function()
 	local width = 185
-	for _, l in SI_OptionsFrameLabels do
+	for _, l in pairs(SI_OptionsFrameLabels) do
 		-- checkbox offset + checkbox + label + row extra + right margin
 		width = math.max(width, 15 + 20 + l[1]:GetStringWidth() + l[2] + 20)
 	end
@@ -1102,7 +1102,7 @@ SI_LogFrameShow = function(name)
 	f.title:SetText(name)
 	f.messages:ClearLines()
 	local log = SI_LogGetByName(name)
-	for _, msg in log do
+	for _, msg in pairs(log) do
 		SI_LogFrameAddLine(msg)
 	end
 	f.empty = table.getn(log) == 0 or nil
@@ -1168,7 +1168,7 @@ local addIgnoreToMenu = function(menu, anchor)
 		if items[i] == "IGNORE" then return end
 		if items[i] == anchor and pos > i then pos = i end
 	end
-	tinsert(items, pos, "IGNORE")
+	table.insert(items, pos, "IGNORE")
 end
 
 --Add Ignore button to dropdown menus (skip on Turtle WoW, which already has it)

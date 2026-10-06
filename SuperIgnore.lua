@@ -3,7 +3,7 @@ local version = GetAddOnMetadata(name, "Version") or ""
 
 local SS = {
 	["AddonName"]			= name,
-	["AddonDir"]			= strlower(name),
+	["AddonDir"]			= string.lower(name),
 	["AddonVersion"] 		= version,
 
 	["TextGeneral"] 		= "General",
@@ -213,27 +213,27 @@ SI_IsBanTimeOver = function(t)
 end
 SI_BannedClearRelog = function()
 	local unbanNames = {}
-	for _, banned in SI_RealmSpecific.BannedPlayers do
+	for _, banned in pairs(SI_RealmSpecific.BannedPlayers) do
 		local d = banned[B_DURATION]
 		if d == TI_RELOG or d == TI_LEGACY_AUTOBLOCK then
 			table.insert(unbanNames, banned[B_NAME])
 		end
 	end
 
-	for _, name in unbanNames do
+	for _, name in pairs(unbanNames) do
 		SI_DelIgnore_New(name, true)
 	end
 end
 -- quiet: remove without a chat line per player; returns the removed names
 SI_BannedCheckTimes = function(quiet)
 	local unbanNames = {}
-	for _, banned in SI_RealmSpecific.BannedPlayers do
+	for _, banned in pairs(SI_RealmSpecific.BannedPlayers) do
 		if SI_IsBanTimeOver(banned[B_DURATION]) then
 			table.insert(unbanNames, banned[B_NAME])
 		end
 	end
 
-	for _, name in unbanNames do
+	for _, name in pairs(unbanNames) do
 		SI_DelIgnore_New(name, quiet)
 	end
 	return unbanNames
@@ -330,7 +330,7 @@ end
 SI_BannedGetIndex = function(name)
 	if not bannedIndex then
 		bannedIndex = {}
-		for index, banned in SI_RealmSpecific.BannedPlayers do
+		for index, banned in pairs(SI_RealmSpecific.BannedPlayers) do
 			bannedIndex[banned[B_NAME]] = index
 		end
 	end
@@ -446,12 +446,12 @@ end
 
 isChatIgnored = function(event, arg1, arg2, arg3, arg4)
 
-	if strsub(event, 1, 8) == "CHAT_MSG" then
-		local chatType = strsub(event, 10)
+	if string.sub(event, 1, 8) == "CHAT_MSG" then
+		local chatType = string.sub(event, 10)
 
-		local source = strsub(chatType,1,1)
+		local source = string.sub(chatType,1,1)
 		if chatType == "CHANNEL" and arg4 then
-			source = strsub(arg4,1,1)
+			source = string.sub(arg4,1,1)
 		end
 
 		if arg1 and chatType == "SYSTEM" then
@@ -855,7 +855,7 @@ SI_ReplaceOldIgnores = function()
 		table.insert(oldNames, SI_GetIgnoreName_Old(i))
 	end
 
-	for _, name in oldNames do
+	for _, name in pairs(oldNames) do
 		if name then
 			SI_DelIgnore_Old(name)
 			SI_AddIgnore_New(name, true)
@@ -929,7 +929,7 @@ end
 
 SI_LogGetByName = function(name)
 	local log = {}
-	for _, msg in SI_Log do
+	for _, msg in pairs(SI_Log) do
 		if msg[1] == name then
 			table.insert(log, msg)
 		end
@@ -970,7 +970,7 @@ SI_LoadSettings = function()
 		SI_Global = { SettingsVersion = SETTINGS_VERSION }
 	elseif not SI_Global.SettingsVersion then
 		-- Older versions saved unchecked boxes as nil: keep those off
-		for k, v in SI_Defaults do
+		for k, v in pairs(SI_Defaults) do
 			if SI_Global[k] == nil and type(v) == "boolean" then
 				SI_Global[k] = false
 			end
@@ -978,7 +978,7 @@ SI_LoadSettings = function()
 		SI_Global.SettingsVersion = SETTINGS_VERSION
 	end
 
-	for k, v in SI_Defaults do
+	for k, v in pairs(SI_Defaults) do
 		if SI_Global[k] == nil then
 			SI_Global[k] = v
 		end
@@ -1078,7 +1078,7 @@ SI_Sandbox = function(fn)
 	}
 
 	local settings = {}
-	for k, v in SI_Global do
+	for k, v in pairs(SI_Global) do
 		settings[k] = v
 	end
 	local printed = {}

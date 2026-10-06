@@ -119,7 +119,7 @@ table.insert(sections, { "Spam list", function()
 	SI_Global.BanOptPublic = false
 	check("Public ads are blocked even with public filtering off", chat("CHAT_MSG_CHANNEL", "Summoning 4g", "Dummysoft", "6. World"))
 	local allowed = {"WHISPER", "PARTY", "RAID", "RAID_LEADER", "RAID_WARNING", "GUILD", "OFFICER", "SAY", "YELL", "EMOTE", "TEXT_EMOTE", "BATTLEGROUND"}
-	for _, kind in allowed do
+	for _, kind in pairs(allowed) do
 		check("Spam mode allows " .. kind, not chat("CHAT_MSG_" .. kind, "hello", "Dummysoft"))
 	end
 	local sent
@@ -142,7 +142,7 @@ table.insert(sections, { "Ignore list", function(printed)
 	SI_AddIgnore_New("dUMMYONE")
 	eq("Names are stored capitalized", SI_GetIgnoreName_New(1), "Dummyone")
 	eq("Ignore list has one entry", SI_GetNumIgnores_New(), 1)
-	check("Ignoring prints a confirmation", strfind(lastPrinted(printed), "Dummyone", 1, true))
+	check("Ignoring prints a confirmation", string.find(lastPrinted(printed), "Dummyone", 1, true))
 	check("Ignored player is recognized", SI_FilterIsPlayerIgnored("Dummyone"))
 	SI_AddOrDelIgnore_New("dummyone", true)
 	check("/ignore in another case toggles them off", not SI_BannedGetIndex("Dummyone"))
@@ -243,12 +243,12 @@ table.insert(sections, { "System messages", function()
 	local sys = function(msg) return chat("CHAT_MSG_SYSTEM", msg) end
 
 	SI_Global.BanOptInvite = true
-	check("Group invite notice from an ignored player is hidden", sys(format(ERR_INVITED_TO_GROUP_S, "Dummyspam")))
-	check("Guild invite notice is hidden", sys(format(ERR_INVITED_TO_GUILD_SS, "Dummyspam", "Knights (EU)")))
-	check("Invite notice from others shows", not sys(format(ERR_INVITED_TO_GROUP_S, "Dummynice")))
+	check("Group invite notice from an ignored player is hidden", sys(string.format(ERR_INVITED_TO_GROUP_S, "Dummyspam")))
+	check("Guild invite notice is hidden", sys(string.format(ERR_INVITED_TO_GUILD_SS, "Dummyspam", "Knights (EU)")))
+	check("Invite notice from others shows", not sys(string.format(ERR_INVITED_TO_GROUP_S, "Dummynice")))
 	SI_Global.BanOptInvite = false
-	check("Invite notice shows with Invites off", not sys(format(ERR_INVITED_TO_GROUP_S, "Dummyspam")))
-	check("Server's 'no longer ignored' notice is hidden", sys(format(ERR_IGNORE_REMOVED_S, "Dummynice")))
+	check("Invite notice shows with Invites off", not sys(string.format(ERR_INVITED_TO_GROUP_S, "Dummyspam")))
+	check("Server's 'no longer ignored' notice is hidden", sys(string.format(ERR_IGNORE_REMOVED_S, "Dummynice")))
 	check("Other system messages show", not sys("Dummy system message."))
 
 	SI_SuppressCancelMessage()
@@ -277,7 +277,7 @@ table.insert(sections, { "Your whispers", function(printed)
 	sent = nil
 	SI_SendChatMessage_New("hi", "WHISPER", nil, "dummyspam")
 	check("Whisper to an ignored player is stopped", sent == nil)
-	check("... with a message saying why", strfind(lastPrinted(printed), "Dummyspam", 1, true))
+	check("... with a message saying why", string.find(lastPrinted(printed), "Dummyspam", 1, true))
 
 	SI_Global.WhisperBlock, SI_Global.WhisperUnignore = false, true
 	sent = nil
