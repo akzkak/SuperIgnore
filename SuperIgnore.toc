@@ -10,5 +10,4 @@ SuperIgnore.lua
 UI.lua
 
 Filters\FriendLib.lua
-Filters\CustomFilter.lua
 Filters\Debugger.lua

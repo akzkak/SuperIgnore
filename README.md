@@ -38,11 +38,9 @@ The /ignore command is modified so you can include an ignore reason:
 	/ignore Name REASON
 
 ## Modules
-- Included modules can filter messages:
 
-#### Custom Filter
-- Create your own list of banned phrases
-- Players writing these phrases will be temporarily blocked
+#### Debugger
+- Review blocked messages and run addon behavior checks.
 
 ## Preview
 <img width="802" height="581" alt="WoW_26-09-26 (12)" src="https://github.com/user-attachments/assets/cd64350d-f74d-4f7b-ab73-cd50d38cc39f" />
