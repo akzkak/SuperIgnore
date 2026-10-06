@@ -40,9 +40,6 @@ The /ignore command is modified so you can include an ignore reason:
 ## Modules
 - Included modules can filter names & messages:
 
-#### Special Snowflake Blocker
-- Blocks messages sent by players who have special characters in their names
-
 #### [ChatSanitizer](https://github.com/Aviana/ChatSanitizer)
 - Blocks spam and advertisements
 
