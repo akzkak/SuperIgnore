@@ -38,10 +38,7 @@ The /ignore command is modified so you can include an ignore reason:
 	/ignore Name REASON
 
 ## Modules
-- Included modules can filter names & messages:
-
-#### [ChatSanitizer](https://github.com/Aviana/ChatSanitizer)
-- Blocks spam and advertisements
+- Included modules can filter messages:
 
 #### Custom Filter
 - Create your own list of banned phrases

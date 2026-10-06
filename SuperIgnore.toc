@@ -10,7 +10,5 @@ SuperIgnore.lua
 UI.lua
 
 Filters\FriendLib.lua
-Filters\FilterLib.lua
-Filters\SpamFilter.lua
 Filters\CustomFilter.lua
 Filters\Debugger.lua
