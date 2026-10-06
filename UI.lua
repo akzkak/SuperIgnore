@@ -652,7 +652,7 @@ SI_ShowIgnorePrompt = function(name, reason)
 		local f = CreateFrame("Frame", "SI_IgnorePrompt", UIParent)
 		f:SetWidth(280)
 		f:SetHeight(182)
-		f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+		f:SetPoint("TOP", UIParent, "TOP", 0, -128)
 		f:SetFrameStrata("DIALOG")
 		f:EnableMouse(true)
 		f:SetBackdrop({
@@ -664,6 +664,26 @@ SI_ShowIgnorePrompt = function(name, reason)
 		SI_Skin("window", f)
 		table.insert(UISpecialFrames, "SI_IgnorePrompt")
 		f.title = SI_FrameCreateHeader(f, "", 12, -14)
+		local playerLabel = SI_FrameCreateHeader(f, SS.PopupPlayerLabel, 11, -14)
+		playerLabel:ClearAllPoints()
+		playerLabel:SetPoint("LEFT", f, "TOPLEFT", 18, -46)
+		local nameBox = CreateFrame("EditBox", "SI_IgnorePromptName", f)
+		nameBox:SetPoint("TOPRIGHT", f, "TOPRIGHT", -18, -36)
+		nameBox:SetWidth(184)
+		nameBox:SetHeight(20)
+		nameBox:SetAutoFocus(false)
+		nameBox:SetMaxLetters(48)
+		nameBox:SetFontObject(GameFontHighlightSmall)
+		SI_Skin("font", nameBox)
+		nameBox:SetTextInsets(6, 6, 0, 0)
+		nameBox:SetBackdrop({
+			bgFile = "Interface\\Buttons\\WHITE8X8",
+			edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12,
+			insets = {left = 3, right = 3, top = 3, bottom = 3},
+		})
+		nameBox:SetBackdropColor(0, 0, 0, .5)
+		SI_Skin("editbox", nameBox)
+		f.nameBox, f.playerLabel = nameBox, playerLabel
 		local full = SI_FrameCreateButton("SI_IgnorePromptFull", f, SS.ModeFull, 110, "TOPLEFT", 18, -36,
 			function()
 				f.soft = false
@@ -678,6 +698,7 @@ SI_ShowIgnorePrompt = function(name, reason)
 			end)
 		f.full, f.softButton = full, soft
 		local durationLabel = SI_FrameCreateHeader(f, SS.PopupDuration, 11, -45)
+		f.durationLabel = durationLabel
 		durationLabel:ClearAllPoints()
 		durationLabel:SetPoint("LEFT", f, "TOPLEFT", 18, -76)
 		local dd = CreateFrame("Button", "SI_IgnorePromptDuration", f, "UIDropDownMenuTemplate")
@@ -700,7 +721,7 @@ SI_ShowIgnorePrompt = function(name, reason)
 			end
 		end)
 		SI_Skin("dropdown", dd)
-		SI_FrameCreateHeader(f, SS.PopupReasonLabel, 11, -104)
+		f.reasonLabel = SI_FrameCreateHeader(f, SS.PopupReasonLabel, 11, -104)
 		local box = CreateFrame("EditBox", "SI_IgnorePromptReason", f)
 		box:SetPoint("TOP", f, "TOP", 0, -120)
 		box:SetWidth(244)
@@ -719,6 +740,16 @@ SI_ShowIgnorePrompt = function(name, reason)
 		SI_Skin("editbox", box)
 		local accept = function()
 			local target, option, text, soft = f.target, f.option, box:GetText(), f.soft
+			if not target then
+				target = string.gsub(nameBox:GetText(), "^%s*(.-)%s*$", "%1")
+				if target == "" then nameBox:SetFocus(); return end
+				target = SI_FixPlayerName(target)
+				if target == UnitName("player") then
+					SI_Print(SS.ChatSelf)
+					nameBox:SetFocus()
+					return
+				end
+			end
 			f:Hide()
 			if not target then return end
 			text = string.gsub(string.gsub(text, "^%s+", ""), "%s+$", "")
@@ -726,8 +757,12 @@ SI_ShowIgnorePrompt = function(name, reason)
 		end
 		box:SetScript("OnEnterPressed", accept)
 		box:SetScript("OnEscapePressed", function() f:Hide() end)
+		nameBox:SetScript("OnEnterPressed", function() nameBox:ClearFocus(); box:SetFocus() end)
+		nameBox:SetScript("OnTabPressed", function() nameBox:ClearFocus(); box:SetFocus() end)
+		nameBox:SetScript("OnEscapePressed", function() f:Hide() end)
 		f:SetScript("OnHide", function()
 			box:ClearFocus()
+			nameBox:ClearFocus()
 			f.target = nil
 			CloseDropDownMenus()
 		end)
@@ -743,15 +778,43 @@ SI_ShowIgnorePrompt = function(name, reason)
 	ignorePrompt.soft = false
 	ignorePrompt.full:SetText("[" .. SS.ModeFull .. "]")
 	ignorePrompt.softButton:SetText(SS.ModeSoft)
-	ignorePrompt.title:SetText(string.format(SS.PopupIgnore, name))
+	if name then
+		ignorePrompt.nameBox:Hide()
+		ignorePrompt.playerLabel:Hide()
+		ignorePrompt.title:SetText(string.format(SS.PopupIgnore, name))
+	else
+		ignorePrompt.title:SetText(SS.PopupIgnorePlayer)
+		ignorePrompt.nameBox:SetText("")
+		ignorePrompt.nameBox:Show()
+		ignorePrompt.playerLabel:Show()
+	end
+	ignorePrompt.title:Show()
+	-- Leave room for the name row only when the player must be entered.
+	local extra = name and 0 or 28
+	ignorePrompt:SetHeight(182 + extra)
+	ignorePrompt.full:ClearAllPoints()
+	ignorePrompt.full:SetPoint("TOPLEFT", ignorePrompt, "TOPLEFT", 18, -36 - extra)
+	ignorePrompt.softButton:ClearAllPoints()
+	ignorePrompt.softButton:SetPoint("TOPRIGHT", ignorePrompt, "TOPRIGHT", -18, -36 - extra)
+	ignorePrompt.durationLabel:ClearAllPoints()
+	ignorePrompt.durationLabel:SetPoint("LEFT", ignorePrompt, "TOPLEFT", 18, -76 - extra)
+	ignorePrompt.dropdown:ClearAllPoints()
+	ignorePrompt.dropdown:SetPoint("TOPLEFT", ignorePrompt, "TOPLEFT", 80, -62 - extra)
+	ignorePrompt.reasonLabel:ClearAllPoints()
+	ignorePrompt.reasonLabel:SetPoint("TOP", ignorePrompt, "TOP", 0, -104 - extra)
+	ignorePrompt.box:ClearAllPoints()
+	ignorePrompt.box:SetPoint("TOP", ignorePrompt, "TOP", 0, -120 - extra)
 	UIDropDownMenu_SetSelectedID(ignorePrompt.dropdown, ignorePrompt.option)
 	-- Vanilla dropdowns share menu rows with the player context menu. Set the
 	-- caption explicitly so a stale row cannot supply "Ignore Player" here.
 	UIDropDownMenu_SetText(T_Time_TextOpt[ignorePrompt.option], ignorePrompt.dropdown)
 	ignorePrompt.box:SetText(reason or "")
 	ignorePrompt:Show()
-	ignorePrompt.box:SetFocus()
-	ignorePrompt.box:HighlightText()
+	ignorePrompt.box:ClearFocus()
+	ignorePrompt.nameBox:ClearFocus()
+	local focus = name and ignorePrompt.box or ignorePrompt.nameBox
+	focus:SetFocus()
+	focus:HighlightText()
 end
 
 -- Player whose reason is being edited, and the popup doing it
@@ -1072,6 +1135,10 @@ SI_CreateFrames = function()
 	SI_CreateOptionsFrame()
 	SI_CreateLogFrame()
 	SI_CreateShowButton()
+	FriendsFrameIgnorePlayerButton:SetScript("OnClick", function()
+		local target = UnitCanCooperate("player", "target") and UnitName("target") or nil
+		SI_ShowIgnorePrompt(target)
+	end)
 
 	local oldOnShow = IgnoreListFrame:GetScript("OnShow")
 	IgnoreListFrame:SetScript("OnShow", function()

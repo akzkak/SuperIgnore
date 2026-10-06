@@ -17,6 +17,8 @@ Both modes support a duration and optional reason. The list separates **Ignore**
 2. Right-click a player and choose **Ignore Player**.
 3. Choose **Ignore** or **Spam**, a duration, and an optional reason, then press **Accept**.
 
+You can also click **Ignore Player** in the ignore window and enter a name in the same popup.
+
 **Default Ignore Time** starts at **Ask** on fresh installs. Each popup starts at **Forever**.
 
 ## Useful controls
