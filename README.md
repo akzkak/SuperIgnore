@@ -7,6 +7,7 @@
 - Can show ignored messages in GUI
 - Works with Prat, WIM and WhisperFu
 - Automatically matches the [pfUI](https://github.com/brues-code/pfUI) look when pfUI is installed
+- Uses pfUI's player class color for hover highlights when its skin is active
 
 **Default Ignore Time** starts at **Ask** on fresh installs. This first dropdown
 option lets you choose a duration and optional reason

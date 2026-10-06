@@ -14,6 +14,18 @@ SI_PF = nil
 -- Every skinnable widget, so the skin can be applied whenever pfUI becomes ready
 SI_SkinWidgets = {}
 
+-- Use pfUI's palette (including its class color overrides) for our accents.
+local skinAccentColor = function()
+	if SI_PF and SI_PF.GetUnitColor then
+		local _, r, g, b = SI_PF.GetUnitColor("player")
+		return r, g, b
+	end
+	local _, class = UnitClass("player")
+	local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+	if color then return color.r, color.g, color.b end
+	return 1, .82, 0
+end
+
 local skinApply = function(w)
 	local kind, obj = w[1], w[2]
 	if kind == "frame" then
@@ -32,8 +44,11 @@ local skinApply = function(w)
 	elseif kind == "editbox" then
 		obj:SetBackdrop(nil)
 		SI_PF.CreateBackdrop(obj)
+		if SI_PF.SetHighlight then SI_PF.SetHighlight(obj) end
 	elseif kind == "font" then
 		obj:SetFont(pfUI.font_default, w[3] or pfUI_config.global.font_size, "OUTLINE")
+	elseif kind == "accenttexture" then
+		obj:SetVertexColor(skinAccentColor())
 	elseif kind == "checkbox" then
 		SI_PF.SkinCheckbox(obj)
 	elseif kind == "button" then
@@ -47,7 +62,8 @@ local skinApply = function(w)
 	end
 end
 
--- kind: frame (arg = parent), window (free-standing, keeps its position), font (arg = pfUI font size or nil for pfUI default), checkbox, button, dropdown, scroll
+-- kind: frame (arg = parent), window (keeps its position), font
+-- (arg = font size), accenttexture, editbox, checkbox, button, dropdown, scroll
 SI_Skin = function(kind, obj, arg)
 	local w = {kind, obj, arg}
 	table.insert(SI_SkinWidgets, w)
@@ -109,8 +125,8 @@ SI_FrameCreateHeader = function(frame, text, fontSize, pad)
 	local t = frame:CreateFontString(nil, "OVERLAY", frame)
 	t:SetPoint("TOP", frame, "TOP", 0, pad)
 	t:SetFont("Fonts\\FRIZQT__.TTF", fontSize)
-	SI_Skin("font", t, fontSize)
 	t:SetTextColor(1,0.82,0)
+	SI_Skin("font", t, fontSize)
 	t:SetText(text)
 	return t
 end
@@ -523,6 +539,7 @@ SI_IgnoreList_Update_New = function()
 				log:SetFrameLevel(button:GetFrameLevel() + 2)
 				log:SetNormalTexture("Interface\\Buttons\\UI-GuildButton-PublicNote-Up")
 				log:SetHighlightTexture("Interface\\Buttons\\GlowStar", "ADD")
+				SI_Skin("accenttexture", log:GetHighlightTexture())
 				log:SetScript("OnEnter", function() this:SetAlpha(1) end)
 				log:SetScript("OnLeave", function() this:SetAlpha(this.alpha) end)
 				log:SetScript("OnClick", function() SI_LogFrameShow(this.name) end)
