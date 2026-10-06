@@ -9,5 +9,4 @@
 SuperIgnore.lua
 UI.lua
 
-Filters\FriendLib.lua
-Filters\Debugger.lua
+Modules\Debugger.lua

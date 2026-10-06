@@ -6,7 +6,8 @@ local T_Time = SI_Shared.T_Time
 local MAX_ENTRIES = 500
 
 -- Duration values (T_Time) and menu options by name
-local TI_RELOG, TI_FOREVER, TI_AUTOBLOCK = T_Time[1], T_Time[6], T_Time[7]
+local TI_RELOG, TI_FOREVER = T_Time[1], T_Time[6]
+local TI_LEGACY_AUTOBLOCK = 1e31 -- compatibility check for old saved filter entries
 local OPT_HOUR, OPT_FOREVER = 2, 6
 
 local entries = {}
@@ -178,10 +179,10 @@ table.insert(sections, { "Ignore list", function(printed)
 		and not SI_BannedGetIndex("Dummytwo"))
 
 	ignore("Dummyrelog", TI_RELOG)
-	ignore("Dummyauto", TI_AUTOBLOCK, "test")
+	ignore("Dummyauto", TI_LEGACY_AUTOBLOCK, "test")
 	ignore("Dummyforever")
 	SI_BannedClearRelog()
-	check("Until Relog and Auto-Block entries clear at login",
+	check("Until Relog and legacy Auto-Block entries clear at login",
 		not SI_BannedGetIndex("Dummyrelog") and not SI_BannedGetIndex("Dummyauto"))
 	check("Forever entry survives login", SI_BannedGetIndex("Dummyforever") ~= nil)
 
@@ -285,46 +286,21 @@ table.insert(sections, { "Your whispers", function(printed)
 	check("... and unignores them", not SI_BannedGetIndex("Dummyspam"))
 
 	SI_Global.WhisperBlock = true
-	ignore("Dummyauto", TI_AUTOBLOCK, "test")
+	ignore("Dummyauto", TI_LEGACY_AUTOBLOCK, "test")
 	sent = nil
 	SI_SendChatMessage_New("hi", "WHISPER", nil, "Dummyauto")
-	eq("Whispers to temp-blocked players aren't stopped", sent, "Dummyauto")
+	eq("Legacy Auto-Block entries do not stop whispers", sent, "Dummyauto")
 	sent = nil
 	SI_SendChatMessage_New("hi", "SAY")
 	eq("Say is never stopped", sent, "SAY")
 end })
 
-table.insert(sections, { "Filters and auto-block", function()
-	local filter = function(message) return strfind(message, "dummyspam", 1, true) ~= nil end
-	SI_FilterSource[filter] = "test"
-	SI_AddChatFilter(filter)
-	SI_Global.BanOptSay = true
-
-	check("Filtered message is hidden", chat("CHAT_MSG_SAY", "buy dummyspam now", "Dummyauto"))
-	local i = SI_BannedGetIndex("Dummyauto")
-	check("Sender is listed as Auto-Block", i and SI_BannedGetDuration(i) == TI_AUTOBLOCK)
-	eq("Auto-Block reason names the filter", i and SI_BannedGetReason(i), "test")
-	check("Their other messages still show", not chat("CHAT_MSG_SAY", "hello", "Dummyauto"))
-	check("Filtered message is logged", SI_LogHasName("Dummyauto"))
-	SI_Global.BanOptSay = false
-	check("Filters only run on channels you block", not chat("CHAT_MSG_SAY", "buy dummyspam now", "Dummyother"))
-	SI_Global.BanOptSay = true
-	SI_DelChatFilter(filter)
-	check("A removed filter no longer applies", not chat("CHAT_MSG_SAY", "dummyspam again", "Dummyother"))
-
-	local nameFilter = function(name) return name == "Dummybadname" end
-	SI_FilterSource[nameFilter] = "name"
-	SI_AddNameFilter(nameFilter)
-	check("Name filter hides by sender", chat("CHAT_MSG_SAY", "hello", "Dummybadname"))
-	i = SI_BannedGetIndex("Dummybadname")
-	eq("... and lists them as Auto-Block with its tag", i and SI_BannedGetReason(i), "name")
-	SI_DelNameFilter(nameFilter)
-
+table.insert(sections, { "Block listeners", function()
 	local told
 	table.insert(SI_BlockListeners, function(text, name) told = name end)
 	ignore("Dummyspam")
 	chat("CHAT_MSG_SAY", "listener test", "Dummyspam")
-	eq("Modules are told about blocks (OnBlock)", told, "Dummyspam")
+	eq("Debugger listeners are told about blocks", told, "Dummyspam")
 end })
 
 table.insert(sections, { "Invites and duels", function()
@@ -413,12 +389,6 @@ table.insert(sections, { "Settings", function()
 	eq("A fresh install gets the defaults", SI_Global.BanOptWhisper, true)
 end })
 
-table.insert(sections, { "Friend exemptions", function()
-	FriendLib:AddFriend("Dummypal")
-	check("Players you whisper are exempt from filters", FriendLib:IsFriend("dummypal"))
-	check("Other players aren't", not FriendLib:IsFriend("Dummystranger"))
-end })
-
 table.insert(sections, { "Debugger", function()
 	table.insert(SI_BlockListeners, m.onBlock)
 	ignore("Dummyspam")
@@ -446,12 +416,6 @@ m.simulate = function()
 
 	for i = 1, table.getn(sections) do
 		runSection(sections[i][1], sections[i][2])
-	end
-	for i = 1, SI_ModsGetNumber() do
-		local mod = SI_ModsGetMod(i)
-		if mod.Test then
-			runSection("Module: " .. mod.Name, function() mod.Test({ check = check, eq = eq }) end)
-		end
 	end
 
 	entries = realEntries

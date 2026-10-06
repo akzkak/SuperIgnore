@@ -14,7 +14,6 @@ local SS = {
 	["TextWhisperUnignore"]	= "Remove Ignore when I whisper",
 
 	["TextModules"]			= "Modules",
-	["TextEdit"]			= "Edit",
 
 	["ChatIgnored"]			= "%s is now being ignored. Duration: %s.",
 	["ChatIgnoredReason"]	= "%s is now being ignored. Duration: %s. Reason: %s",
@@ -62,8 +61,6 @@ local SS = {
 	["ChatSoftIgnored"]		= "%s is now on the Spam list (public channels only). Duration: %s.",
 	["TimeAuto"]			= "Auto-Block",
 
-	["PopupRemove"]			= "Remove",
-
 	["MenuDuration"]		= "Ignore Duration",
 	["MenuReason"]			= "Set Reason...",
 	["MenuUnignore"]		= "Unignore",
@@ -71,18 +68,12 @@ local SS = {
 	["ChatDuration"]		= "%s ignore duration changed to: %s.",
 }
 
-local T_RELOG		= 1
-local T_HOUR		= 2
-local T_DAY			= 3
-local T_WEEK		= 4
-local T_MONTH		= 5
 local T_FOREVER		= 6
-local T_AUTOBLOCK	= 7
 local T_ASK			= 8 -- setting only; never a stored ignore duration
 
 local TI_RELOG		= -1
 local TI_FOREVER	= 1e30 -- lol
-local TI_AUTOBLOCK	= 1e31
+local TI_LEGACY_AUTOBLOCK = 1e31 -- old filter entries: clear at login, never treat as full ignores
 
 -- Ban entry slots; slot 3 was used by old versions and is left empty
 local B_NAME		= 1
@@ -98,7 +89,6 @@ local T_Time = {
 	60 * 60 * 24 * 7,
 	60 * 60 * 24 * 30,
 	TI_FOREVER,
-	TI_AUTOBLOCK,
 }
 
 local T_Time_TextOpt = {
@@ -116,7 +106,6 @@ SI_Shared = {
 	B_NAME			= B_NAME,
 	B_DURATION		= B_DURATION,
 	B_REASON		= B_REASON,
-	B_SOFT			= B_SOFT,
 	T_Time			= T_Time,
 	T_Time_TextOpt	= T_Time_TextOpt,
 	T_ASK			= T_ASK,
@@ -124,11 +113,6 @@ SI_Shared = {
 }
 
 ------------- Global
-
-SI_NameFilter = {}
-SI_ChatFilter = {}
--- filter -> short tag of the mod that installed it, shown as the auto-block reason
-SI_FilterSource = {}
 
 SI_MainFrame = nil
 SI_OptionsFrame = nil
@@ -146,22 +130,13 @@ SI_Log = {}
 
 ------------- Mods
 
-SI_ModsGetNumber = function()
-	return table.getn(SI_Mods)
-end
-
-SI_ModsGetMod = function(index)
-	return SI_Mods[index]
-end
-
 SI_ModInstall = function(mod)
-	local index = SI_ModsGetNumber() + 1
+	local index = table.getn(SI_Mods) + 1
 	SI_Mods[index] = mod
 
 	if not SI_Global.Mods[mod.Name] then
 		SI_Global.Mods[mod.Name] = {
 			["Enabled"] = false,
-			["Vars"] = {}
 		}
 	end
 
@@ -178,32 +153,16 @@ SI_ModEnable = function(index)
 	local mod = SI_Mods[index]
 	SI_Global.Mods[mod.Name].Enabled = true
 
-	if mod.NameFilter then
-		SI_FilterSource[mod.NameFilter] = mod.Tag or mod.Name
-		SI_AddNameFilter(mod.NameFilter)
-	end
-	if mod.ChatFilter then
-		SI_FilterSource[mod.ChatFilter] = mod.Tag or mod.Name
-		SI_AddChatFilter(mod.ChatFilter)
-	end
 	if mod.OnBlock then
 		table.insert(SI_BlockListeners, mod.OnBlock)
 	end
-	if mod.OnEnable then
-		mod.OnEnable()
-	end
+
 end
 
 SI_ModDisable = function(index)
 	local mod = SI_Mods[index]
 	SI_Global.Mods[mod.Name].Enabled = false
 
-	if mod.NameFilter then
-		SI_DelNameFilter(mod.NameFilter)
-	end
-	if mod.ChatFilter then
-		SI_DelChatFilter(mod.ChatFilter)
-	end
 	if mod.OnBlock then
 		for i = table.getn(SI_BlockListeners), 1, -1 do
 			if SI_BlockListeners[i] == mod.OnBlock then
@@ -211,78 +170,16 @@ SI_ModDisable = function(index)
 			end
 		end
 	end
-	if mod.OnDisable then
-		mod.OnDisable()
-	end
+
 end
 
-SI_ModGetVar = function(mod, name)
-	local modinfo = SI_Global.Mods[mod.Name]
-	return modinfo.Vars[name]
-end
-
-SI_ModSetVar = function(mod, name, value)
-	local modinfo = SI_Global.Mods[mod.Name]
-	modinfo.Vars[name] = value
-end
-
-------------- Filter
-
-SI_AddNameFilter = function(filter)
-	table.insert(SI_NameFilter, filter)
-end
-SI_DelNameFilter = function(filter)
-	for i = table.getn(SI_NameFilter), 1, -1 do
-		if SI_NameFilter[i] == filter then
-			table.remove(SI_NameFilter, i)
-		end
-	end
-end
-
-SI_AddChatFilter = function(filter)
-	table.insert(SI_ChatFilter, filter)
-end
-SI_DelChatFilter = function(filter)
-	for i = table.getn(SI_ChatFilter), 1, -1 do
-		if SI_ChatFilter[i] == filter then
-			table.remove(SI_ChatFilter, i)
-		end
-	end
-end
-
+-- Full ignores apply to direct interactions and configured chat types.
+-- Spam entries only block channel messages in SI_IsChatIgnored.
 SI_FilterIsPlayerIgnored = function(name)
-	if name == nil then
-		return false
-	end
-	if name == UnitName("player") then
-		return false
-	end
+	if not name or name == UnitName("player") then return false end
 	local index = SI_BannedGetIndex(name)
-	if index and SI_BannedIsSoft(index) then return false end
-
-	for _, filter in SI_NameFilter do
-		if filter(name) then
-			SI_CheckAutoBlock(name, SI_FilterSource[filter])
-			return true
-		end
-	end
-
-	return false
-end
-
-SI_FilterIsChatIgnored = function(message, name, chatType)
-	if name == UnitName("player") then
-		return false
-	end
-
-	for _, filter in SI_ChatFilter do
-		if filter(message, name, chatType) then
-			SI_CheckAutoBlock(name, SI_FilterSource[filter])
-			return true
-		end
-	end
-
-	return false
+	return index and not SI_BannedIsSoft(index)
+		and SI_BannedGetDuration(index) ~= TI_LEGACY_AUTOBLOCK or false
 end
 
 
@@ -294,7 +191,7 @@ SI_Print = function(msg)
 end
 
 SI_IsTimeSpecial = function(t)
-	return t == TI_FOREVER or t == TI_RELOG or t == TI_AUTOBLOCK
+	return t == TI_FOREVER or t == TI_RELOG or t == TI_LEGACY_AUTOBLOCK
 end
 
 SI_CalcBanTime = function(option)
@@ -316,7 +213,7 @@ SI_BannedClearRelog = function()
 	local unbanNames = {}
 	for _, banned in SI_RealmSpecific.BannedPlayers do
 		local d = banned[B_DURATION]
-		if d == TI_RELOG or d == TI_AUTOBLOCK then
+		if d == TI_RELOG or d == TI_LEGACY_AUTOBLOCK then
 			table.insert(unbanNames, banned[B_NAME])
 		end
 	end
@@ -364,7 +261,7 @@ SI_FormatTimeNoColor = function(t)
 		return SS.TimeForever, "ff00ff"
 	elseif t == TI_RELOG then
 		return SS.TimeRelog, "00ff00"
-	elseif t == TI_AUTOBLOCK then
+	elseif t == TI_LEGACY_AUTOBLOCK then
 		return SS.TimeAuto, "ffffff"
 	else
 		local tt = t - time()
@@ -524,15 +421,6 @@ SI_CheckInteractRules = function(name)
 	end
 end
 
--- Auto-block entries only list the player for review (log icon) until relog;
--- they don't ignore them, only the filtered messages are hidden
-SI_CheckAutoBlock = function(name, source)
-	local index = SI_BannedGetIndex(name)
-	if not index then
-		SI_AddIgnore_New(name, true, TI_AUTOBLOCK, source)
-	end
-end
-
 local isChatIgnored
 
 -- Every chat frame (and WIM) asks about the same message in the same frame; answer once
@@ -596,9 +484,9 @@ isChatIgnored = function(event, arg1, arg2, arg3, arg4)
 			SI_LogIgnore(arg1, arg2, source)
 			return true
 		end
-		-- A soft ignore must never become a full block through the name filters.
+		-- Spam mode leaves all private and group communication available.
 		if arg1 and arg2 and not soft and SI_IsChannelBanned(chatType) then
-			if SI_FilterIsPlayerIgnored(arg2) or SI_FilterIsChatIgnored(arg1, arg2, chatType) then
+			if SI_FilterIsPlayerIgnored(arg2) then
 				SI_LogIgnore(arg1, arg2, source)
 				SI_BubbleBlock(chatType, arg1)
 				return true
@@ -884,9 +772,9 @@ end
 SI_SendChatMessage_New = function(msg, chatType, lang, channel)
 	-- Typed whisper targets ("/w bob") must match the stored "Bob"
 	local name = chatType == "WHISPER" and channel and SI_FixPlayerName(channel)
-	-- Only players I ignored myself; filters (auto-block, name filters) don't stop my whispers
+	-- Only full ignores stop outgoing whispers; Spam entries remain available
 	local index = name and SI_BannedGetIndex(name)
-	if index and not SI_BannedIsSoft(index) and SI_BannedGetDuration(index) ~= TI_AUTOBLOCK then
+	if index and not SI_BannedIsSoft(index) and SI_BannedGetDuration(index) ~= TI_LEGACY_AUTOBLOCK then
 		if SI_CheckInteractRules(name) then
 			return
 		end
@@ -956,18 +844,6 @@ SI_HookFunctions = function()
 
 	SI_SendChatMessage_Old		= SendChatMessage
 	SendChatMessage				= SI_SendChatMessage_New
-end
-
--- The ignore list itself, as a name filter; Auto-Block entries are listed only, not ignored
-SI_BanListFilter = function(name)
-	local index = SI_BannedGetIndex(name)
-	if index and not SI_BannedIsSoft(index) and SI_BannedGetDuration(index) ~= TI_AUTOBLOCK then
-		return true
-	end
-end
-
-SI_ApplyFilters = function()
-	SI_AddNameFilter(SI_BanListFilter)
 end
 
 SI_ReplaceOldIgnores = function()
@@ -1106,6 +982,14 @@ SI_LoadSettings = function()
 		end
 	end
 
+	-- Retire settings belonging to removed filtering modules; keep Debugger enabled state.
+	if SI_Global.Mods then
+		SI_Global.Mods["Special Snowflake Blocker"] = nil
+		SI_Global.Mods["ChatSanitizer"] = nil
+		SI_Global.Mods["Custom Filter"] = nil
+		if SI_Global.Mods.Debugger then SI_Global.Mods.Debugger.Vars = nil end
+	end
+
 	-- Replaced by the Debugger module
 	SI_Global.DebugLog = nil
 end
@@ -1144,7 +1028,6 @@ SI_MainFrame:SetScript("OnEvent", function()
 			SI_SkinDetect()
 			SI_CreateFrames()
 			SI_EnableIgnoreListRightclick()
-			SI_ApplyFilters()
 
 			SI_Print(string.format("%s %s loaded.", SS.AddonName, SS.AddonVersion))
 
@@ -1182,17 +1065,14 @@ end
 ------------- Sandbox
 
 -- Runs fn(printed) against a throwaway ignore list, a copy of the settings, an empty
--- session log, filter lists holding only the ignore list, and empty FriendLib lists.
+-- session log, and no active Debugger listeners.
 -- The addon's chat output goes to `printed` instead of the chat frame. Everything is
 -- put back afterwards, also when fn errors. Used by the Debugger's simulation.
 SI_Sandbox = function(fn)
 	local saved = {
 		realm = SI_RealmSpecific, global = SI_Global, log = SI_Log, print = SI_Print,
-		nameFilter = SI_NameFilter, chatFilter = SI_ChatFilter, filterSource = SI_FilterSource,
 		listeners = SI_BlockListeners, seen = logSeen, names = logNames, cancel = cancelMessageUntil,
 		tradeName = tradeRequestName, tradeTime = tradeRequestTime, tradeAllowed = tradeAllowedName,
-		whispered = FriendLib.whispered, friends = FriendLib.friends,
-		guild = FriendLib.guild, group = FriendLib.group,
 	}
 
 	local settings = {}
@@ -1205,23 +1085,18 @@ SI_Sandbox = function(fn)
 	SI_Global = settings
 	SI_Log, logSeen, logNames = {}, {}, {}
 	SI_Print = function(msg) table.insert(printed, msg) end
-	SI_NameFilter, SI_ChatFilter = { SI_BanListFilter }, {}
-	SI_FilterSource, SI_BlockListeners = {}, {}
+	SI_BlockListeners = {}
 	cancelMessageUntil = 0
 	tradeRequestName, tradeRequestTime, tradeAllowedName = nil, 0, nil
-	FriendLib.whispered, FriendLib.friends, FriendLib.guild, FriendLib.group = {}, {}, {}, {}
 	SI_BannedIndexChanged()
 	SI_ChatCacheReset()
 
 	local ok, err = pcall(fn, printed)
 
 	SI_RealmSpecific, SI_Global, SI_Log, SI_Print = saved.realm, saved.global, saved.log, saved.print
-	SI_NameFilter, SI_ChatFilter, SI_FilterSource = saved.nameFilter, saved.chatFilter, saved.filterSource
 	SI_BlockListeners, logSeen, logNames = saved.listeners, saved.seen, saved.names
 	cancelMessageUntil = saved.cancel
 	tradeRequestName, tradeRequestTime, tradeAllowedName = saved.tradeName, saved.tradeTime, saved.tradeAllowed
-	FriendLib.whispered, FriendLib.friends = saved.whispered, saved.friends
-	FriendLib.guild, FriendLib.group = saved.guild, saved.group
 	SI_BannedIndexChanged()
 	SI_ChatCacheReset()
 	IgnoreList_Update()

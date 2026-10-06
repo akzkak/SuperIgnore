@@ -343,7 +343,7 @@ SI_CreateModUI = function(index, mod)
 		b:SetHeight(18)
 		b:SetWidth(40)
 		b:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, SI_OptionsFramePad - 1)
-		b:SetText(mod.EditText or SS.TextEdit)
+		b:SetText(mod.EditText)
 		b:SetScript("OnClick", mod.OnEdit)
 		SI_Skin("button", b)
 	end
