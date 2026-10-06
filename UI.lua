@@ -631,6 +631,7 @@ SI_ShowIgnorePrompt = function(name, reason)
 				info.func = function()
 					f.option = option
 					UIDropDownMenu_SetSelectedID(dd, option)
+					UIDropDownMenu_SetText(T_Time_TextOpt[option], dd)
 				end
 				UIDropDownMenu_AddButton(info, 1)
 			end
@@ -680,6 +681,9 @@ SI_ShowIgnorePrompt = function(name, reason)
 	ignorePrompt.option = SI_Shared.T_FOREVER
 	ignorePrompt.title:SetText(string.format(SS.PopupIgnore, name))
 	UIDropDownMenu_SetSelectedID(ignorePrompt.dropdown, ignorePrompt.option)
+	-- Vanilla dropdowns share menu rows with the player context menu. Set the
+	-- caption explicitly so a stale row cannot supply "Ignore Player" here.
+	UIDropDownMenu_SetText(T_Time_TextOpt[ignorePrompt.option], ignorePrompt.dropdown)
 	ignorePrompt.box:SetText(reason or "")
 	ignorePrompt:Show()
 	ignorePrompt.box:SetFocus()
