@@ -981,6 +981,9 @@ SI_CreateOptionsFrame = function()
 	createOpt(101, "WhisperUnignore", SS.TextWhisperUnignore, pad, function(checked)
 		if checked and SI_Box_100:GetChecked() then SI_Box_100:Click() end
 	end)
+	pad = pad - 18
+
+	createOpt(102, "WarnIgnoredPlayers", SS.TextWarnIgnoredPlayers, pad)
 	pad = pad - 28
 
 	SI_FrameCreateHeader(f, SS.TextOptions, 11, pad)

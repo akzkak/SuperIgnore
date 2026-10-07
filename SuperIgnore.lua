@@ -12,6 +12,9 @@ local SS = {
 	["TextDuration"]		= "Default Ignore Time",
 	["TextWhisperBlock"]	= "Prevent whispers to ignored players",
 	["TextWhisperUnignore"]	= "Remove Ignore when I whisper",
+	["TextWarnIgnoredPlayers"]	= "Warn about ignored players",
+	["ChatIgnoredGroup"]	= "[SuperIgnore] Warning: %s is in your %s and on your Ignore list.",
+	["ChatIgnoredMenu"]	= "[SuperIgnore] Warning: %s is on your Ignore list.",
 
 	["TextModules"]			= "Modules",
 
@@ -788,6 +791,8 @@ end
 ------------- Main Code
 
 SI_HookFunctions = function()
+	SI_UnitPopup_ShowMenu_Old = UnitPopup_ShowMenu
+	UnitPopup_ShowMenu = SI_UnitPopup_ShowMenu_New
 
 	SI_FriendsFrameIgnoreButton_OnClick_Old = FriendsFrameIgnoreButton_OnClick
 	FriendsFrameIgnoreButton_OnClick = SI_FriendsFrameIgnoreButton_OnClick_New
@@ -943,11 +948,70 @@ end
 
 ------------- Initialization
 
+-- Track names rather than unit slots, which change when the roster is reordered.
+local groupMembers = {}
+
+local warnIgnoredPlayer = function(name, group)
+	if not SI_RealmSpecific or not name then return end
+	name = SI_FixPlayerName(name)
+	if not SI_FilterIsPlayerIgnored(name) then return end
+	local index = SI_BannedGetIndex(name)
+	local duration = SI_BannedGetDuration(index)
+	if not SI_IsTimeSpecial(duration) and duration <= time() then return end
+	local playerLink = "|Hplayer:" .. name .. "|h[" .. name .. "]|h"
+	local msg = group and string.format(SS.ChatIgnoredGroup, playerLink, group)
+		or string.format(SS.ChatIgnoredMenu, playerLink)
+	local reason = SI_BannedGetReason(index)
+	if reason and reason ~= "" then msg = msg .. " Reason: " .. reason end
+	SI_Print("|cffffff00" .. msg .. "|r")
+end
+
+SI_UnitPopup_ShowMenu_New = function(dropdownMenu, which, unit, name, userData)
+	-- Submenus reuse the same player; only warn when opening the main menu.
+	if SI_Global and SI_Global.WarnIgnoredPlayers and (not UIDROPDOWNMENU_MENU_LEVEL or UIDROPDOWNMENU_MENU_LEVEL == 1)
+		and (not unit or UnitIsPlayer(unit)) then
+		warnIgnoredPlayer(name or (unit and UnitName(unit)))
+	end
+	return SI_UnitPopup_ShowMenu_Old(dropdownMenu, which, unit, name, userData)
+end
+
+SI_CheckIgnoredGroup = function()
+	if not SI_RealmSpecific then return end
+	local current = {}
+	local unresolved = false
+	local count = GetNumRaidMembers()
+	local prefix = "raid"
+	local group = "raid"
+	if count == 0 then
+		count = GetNumPartyMembers()
+		prefix = "party"
+		group = "party"
+	end
+	for i = 1, count do
+		local name = UnitName(prefix .. i)
+		if not name or name == "" or name == UNKNOWN or name == UNKNOWNOBJECT then
+			unresolved = true
+		elseif name ~= UnitName("player") then
+			current[name] = true
+			if not groupMembers[name] and SI_Global.WarnIgnoredPlayers then
+				warnIgnoredPlayer(name, group)
+			end
+		end
+	end
+	-- Keep known members during temporary missing names; retry on UNIT_NAME_UPDATE.
+	if unresolved then
+		for name in pairs(current) do groupMembers[name] = true end
+	else
+		groupMembers = current
+	end
+end
+
 local SETTINGS_VERSION = 1
 
 local SI_Defaults = {
 	WhisperBlock	= false,
 	WhisperUnignore	= true,
+	WarnIgnoredPlayers = true,
 	BanDuration		= T_ASK,
 
 	BanOptWhisper	= true,
@@ -966,12 +1030,18 @@ local SI_Defaults = {
 
 -- Fills in missing settings, so options added in later versions get their default
 SI_LoadSettings = function()
+	-- Keep the original warning preference when combining group and menu warnings.
+	if SI_Global then
+		if SI_Global.WarnIgnoredPlayers == nil then SI_Global.WarnIgnoredPlayers = SI_Global.WarnIgnoredGroup end
+		SI_Global.WarnIgnoredGroup, SI_Global.WarnIgnoredMenu = nil, nil
+	end
 	if not SI_Global then
 		SI_Global = { SettingsVersion = SETTINGS_VERSION }
 	elseif not SI_Global.SettingsVersion then
-		-- Older versions saved unchecked boxes as nil: keep those off
+		-- Older versions saved unchecked boxes as nil: keep those off.
+		-- Player warnings are new, so they still receive their default below.
 		for k, v in pairs(SI_Defaults) do
-			if SI_Global[k] == nil and type(v) == "boolean" then
+			if SI_Global[k] == nil and type(v) == "boolean" and k ~= "WarnIgnoredPlayers" then
 				SI_Global[k] = false
 			end
 		end
@@ -1000,6 +1070,9 @@ SI_MainFrame = CreateFrame("frame")
 SI_MainFrame:RegisterEvent("ADDON_LOADED")
 SI_MainFrame:RegisterEvent("IGNORELIST_UPDATE")
 SI_MainFrame:RegisterEvent("PLAYER_LOGIN")
+SI_MainFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")
+SI_MainFrame:RegisterEvent("RAID_ROSTER_UPDATE")
+SI_MainFrame:RegisterEvent("UNIT_NAME_UPDATE")
 SI_MainFrame:SetScript("OnEvent", function()
 	if event == "ADDON_LOADED" then
 		if string.lower(arg1) == SS.AddonDir then
@@ -1044,6 +1117,12 @@ SI_MainFrame:SetScript("OnEvent", function()
 	elseif event == "PLAYER_LOGIN" then
 		-- Every addon (incl. pfUI) is loaded by now regardless of load order
 		SI_SkinDetect()
+		SI_CheckIgnoredGroup()
+	elseif event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE" then
+		SI_CheckIgnoredGroup()
+	elseif event == "UNIT_NAME_UPDATE" and arg1
+		and (string.sub(arg1, 1, 5) == "party" or string.sub(arg1, 1, 4) == "raid") then
+		SI_CheckIgnoredGroup()
 	elseif event == "IGNORELIST_UPDATE" then
 		SI_MainFrame:UnregisterEvent("IGNORELIST_UPDATE")
 		SI_ReplaceOldIgnores()
@@ -1075,6 +1154,7 @@ SI_Sandbox = function(fn)
 		realm = SI_RealmSpecific, global = SI_Global, log = SI_Log, print = SI_Print,
 		listeners = SI_BlockListeners, seen = logSeen, names = logNames, cancel = cancelMessageUntil,
 		tradeName = tradeRequestName, tradeTime = tradeRequestTime, tradeAllowed = tradeAllowedName,
+		groupMembers = groupMembers,
 	}
 
 	local settings = {}
@@ -1088,6 +1168,7 @@ SI_Sandbox = function(fn)
 	SI_Log, logSeen, logNames = {}, {}, {}
 	SI_Print = function(msg) table.insert(printed, msg) end
 	SI_BlockListeners = {}
+	groupMembers = {}
 	cancelMessageUntil = 0
 	tradeRequestName, tradeRequestTime, tradeAllowedName = nil, 0, nil
 	SI_BannedIndexChanged()
@@ -1099,6 +1180,7 @@ SI_Sandbox = function(fn)
 	SI_BlockListeners, logSeen, logNames = saved.listeners, saved.seen, saved.names
 	cancelMessageUntil = saved.cancel
 	tradeRequestName, tradeRequestTime, tradeAllowedName = saved.tradeName, saved.tradeTime, saved.tradeAllowed
+	groupMembers = saved.groupMembers
 	SI_BannedIndexChanged()
 	SI_ChatCacheReset()
 	IgnoreList_Update()

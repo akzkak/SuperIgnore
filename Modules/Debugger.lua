@@ -381,12 +381,21 @@ table.insert(sections, { "Settings", function()
 	eq("Old settings: unchecked options stay off", SI_Global.BanOptYell, false)
 	eq("Old settings: chosen duration is kept", SI_Global.BanDuration, 3)
 	eq("Old settings: migrated once", SI_Global.SettingsVersion, 1)
+	eq("Old settings get the new group warning default", SI_Global.WarnIgnoredPlayers, true)
+	SI_Global.WarnIgnoredPlayers = false
+	SI_LoadSettings()
+	eq("Disabled group warnings stay disabled", SI_Global.WarnIgnoredPlayers, false)
 	SI_Global.BanOptDuel = nil
 	SI_LoadSettings()
 	eq("New options get their default", SI_Global.BanOptDuel, true)
 	SI_Global = nil
 	SI_LoadSettings()
 	eq("A fresh install gets the defaults", SI_Global.BanOptWhisper, true)
+	eq("A fresh install enables group warnings", SI_Global.WarnIgnoredPlayers, true)
+	SI_Global = { SettingsVersion = 1, WarnIgnoredGroup = false, WarnIgnoredMenu = true }
+	SI_LoadSettings()
+	eq("Combined warnings preserve the original disabled preference", SI_Global.WarnIgnoredPlayers, false)
+	check("Separate warning settings are retired", SI_Global.WarnIgnoredGroup == nil and SI_Global.WarnIgnoredMenu == nil)
 end })
 
 table.insert(sections, { "Debugger", function()
@@ -397,6 +406,116 @@ table.insert(sections, { "Debugger", function()
 	eq("Debugger records blocked messages", table.getn(entries), n + 1)
 	local e = entries[table.getn(entries)]
 	check("... with player and source", e and e.name == "Dummyspam" and e.source == "W")
+end })
+
+table.insert(sections, { "Group warnings", function(printed)
+	local realUnitName = UnitName
+	local party, raid = {}, {}
+	stub(G, "GetNumPartyMembers", function() return table.getn(party) end)
+	stub(G, "GetNumRaidMembers", function() return table.getn(raid) end)
+	stub(G, "UnitName", function(unit)
+		local _, _, i = string.find(unit, "^party(%d+)$")
+		if i then return party[tonumber(i)] end
+		_, _, i = string.find(unit, "^raid(%d+)$")
+		if i then return raid[tonumber(i)] end
+		return realUnitName(unit)
+	end)
+	SI_Global.WarnIgnoredPlayers = true
+	ignore("Dummyignored", TI_FOREVER, "Left the dungeon early")
+	SI_AddIgnore_New("Dummyads", true, TI_FOREVER, "Summoning ads", true)
+	ignore("Dummyexpired", time() - 1)
+	ignore("Dummyauto", TI_LEGACY_AUTOBLOCK)
+	party = {"Dummyignored", "Dummynice", "Dummyads", "Dummyexpired"}
+	SI_CheckIgnoredGroup()
+	eq("Only active full ignores trigger a warning", table.getn(printed), 1)
+	check("Warning includes name and saved reason", string.find(lastPrinted(printed), "Dummyignored", 1, true)
+		and string.find(lastPrinted(printed), "Left the dungeon early", 1, true))
+	check("Warning is yellow", string.find(lastPrinted(printed), "|cffffff00", 1, true))
+	check("Warning name is a player link", string.find(lastPrinted(printed), "|Hplayer:Dummyignored|h[Dummyignored]|h", 1, true))
+	check("Party warning says party", string.find(lastPrinted(printed), "in your party", 1, true))
+	SI_CheckIgnoredGroup()
+	eq("Repeated roster events do not repeat warnings", table.getn(printed), 1)
+	party = {"Dummynice", "Dummyignored"}
+	SI_CheckIgnoredGroup()
+	eq("Reordering members does not repeat warnings", table.getn(printed), 1)
+	raid = {UnitName("player"), "Dummyignored", "Dummynice", "Dummyauto"}
+	SI_CheckIgnoredGroup()
+	eq("Raid conversion and legacy auto-block do not warn", table.getn(printed), 1)
+	ignore("Dummyraid")
+	table.insert(raid, "Dummyraid")
+	SI_CheckIgnoredGroup()
+	eq("New ignored raid member triggers a warning", table.getn(printed), 2)
+	check("Raid warning says raid", string.find(lastPrinted(printed), "in your raid", 1, true))
+	check("Warning works without a reason", not string.find(lastPrinted(printed), "Reason:", 1, true))
+	party, raid = {}, {}
+	SI_CheckIgnoredGroup()
+	party = {"Dummyignored"}
+	SI_CheckIgnoredGroup()
+	eq("Joining a new group warns again", table.getn(printed), 3)
+	party = {}
+	SI_CheckIgnoredGroup()
+	SI_Global.WarnIgnoredPlayers = false
+	party = {"Dummyignored"}
+	SI_CheckIgnoredGroup()
+	eq("Disabled option suppresses warnings", table.getn(printed), 3)
+	SI_Global.WarnIgnoredPlayers = true
+	SI_CheckIgnoredGroup()
+	eq("Enabling the option does not repeat existing members", table.getn(printed), 3)
+	party = {"Dummyignored", UNKNOWN or "Unknown"}
+	stub(G, "UNKNOWN", "Unknown")
+	SI_CheckIgnoredGroup()
+	party = {"Unknown", "Dummyignored"}
+	SI_CheckIgnoredGroup()
+	party = {"Dummyraid", "Dummyignored"}
+	SI_CheckIgnoredGroup()
+	eq("Delayed names warn once without repeating known members", table.getn(printed), 4)
+end })
+
+table.insert(sections, { "Player menu warnings", function(printed)
+	ignore("Dummymenu", TI_FOREVER, "Left the dungeon early")
+	SI_AddIgnore_New("Dummyads", true, TI_FOREVER, nil, true)
+	ignore("Dummyexpired", time() - 1)
+	ignore("Dummyauto", TI_LEGACY_AUTOBLOCK)
+	SI_Global.WarnIgnoredPlayers = true
+	stub(G, "UIDROPDOWNMENU_MENU_LEVEL", 1)
+	local originalCalls = 0
+	local menu, data = {}, {}
+	stub(G, "SI_UnitPopup_ShowMenu_Old", function(dropdown, which, unit, name, userData)
+		originalCalls = originalCalls + 1
+		check("Player menu arguments are preserved", dropdown == menu and which == "FRIEND"
+			and not unit and name == "dummymenu" and userData == data)
+		eq("Warning appears before the menu opens", table.getn(printed), 1)
+		return "menu-result"
+	end)
+	local result = UnitPopup_ShowMenu(menu, "FRIEND", nil, "dummymenu", data)
+	eq("Original player menu still opens", originalCalls, 1)
+	eq("Original menu return value is preserved", result, "menu-result")
+	check("Menu warning includes linked name and reason", string.find(lastPrinted(printed), "|Hplayer:Dummymenu|h[Dummymenu]|h", 1, true)
+		and string.find(lastPrinted(printed), "Left the dungeon early", 1, true))
+	check("Chat name menu warning does not claim group membership", not string.find(lastPrinted(printed), "in your", 1, true))
+	stub(G, "SI_UnitPopup_ShowMenu_Old", function() end)
+	stub(G, "UnitIsPlayer", function(unit) return unit == "target" end)
+	local realUnitName = UnitName
+	stub(G, "UnitName", function(unit)
+		if unit == "target" then return "Dummymenu" end
+		return realUnitName(unit)
+	end)
+	UnitPopup_ShowMenu(menu, "PLAYER", "target")
+	eq("Unit menus resolve the player name", table.getn(printed), 2)
+	UIDROPDOWNMENU_MENU_LEVEL = 2
+	UnitPopup_ShowMenu(menu, "PLAYER", "target")
+	eq("Submenus do not repeat warnings", table.getn(printed), 2)
+	UIDROPDOWNMENU_MENU_LEVEL = 1
+	UnitPopup_ShowMenu(menu, "PLAYER", "npc", "Dummymenu")
+	UnitPopup_ShowMenu(menu, "FRIEND", nil, "Dummyads")
+	UnitPopup_ShowMenu(menu, "FRIEND", nil, "Dummyexpired")
+	UnitPopup_ShowMenu(menu, "FRIEND", nil, "Dummyauto")
+	UnitPopup_ShowMenu(menu, "FRIEND", nil, "Dummynice")
+	UnitPopup_ShowMenu(menu, "SELF", "player", UnitName("player"))
+	eq("NPCs, Spam, expired, auto-block and unignored players do not warn", table.getn(printed), 2)
+	SI_Global.WarnIgnoredPlayers = false
+	UnitPopup_ShowMenu(menu, "PLAYER", "target")
+	eq("The shared warning option disables menu warnings", table.getn(printed), 2)
 end })
 
 local runSection = function(title, fn)
@@ -447,7 +566,7 @@ m.createUI = function(frame)
 	simulate:SetScript("OnEnter", function()
 		GameTooltip:SetOwner(simulate, "ANCHOR_RIGHT")
 		GameTooltip:SetText("Simulate")
-		GameTooltip:AddLine("Runs dummy players, messages, invites, duels and trades through the addon and checks every result. Your ignore list, settings and logs are not touched.", 1, 1, 1, 1)
+		GameTooltip:AddLine("Runs dummy players, messages, invites, duels, trades and player warnings through the addon and checks every result. Your ignore list, settings and logs are not touched.", 1, 1, 1, 1)
 		GameTooltip:Show()
 	end)
 	simulate:SetScript("OnLeave", function() GameTooltip:Hide() end)
