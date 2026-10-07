@@ -794,6 +794,9 @@ SI_HookFunctions = function()
 	SI_UnitPopup_ShowMenu_Old = UnitPopup_ShowMenu
 	UnitPopup_ShowMenu = SI_UnitPopup_ShowMenu_New
 
+	SI_ChatFrame_SendTell_Old = ChatFrame_SendTell
+	ChatFrame_SendTell = SI_ChatFrame_SendTell_New
+
 	SI_FriendsFrameIgnoreButton_OnClick_Old = FriendsFrameIgnoreButton_OnClick
 	FriendsFrameIgnoreButton_OnClick = SI_FriendsFrameIgnoreButton_OnClick_New
 
@@ -964,6 +967,14 @@ local warnIgnoredPlayer = function(name, group)
 	local reason = SI_BannedGetReason(index)
 	if reason and reason ~= "" then msg = msg .. " Reason: " .. reason end
 	SI_Print("|cffffff00" .. msg .. "|r")
+end
+
+SI_ChatFrame_SendTell_New = function(name, chatFrame)
+	-- Left-clicking a chat player link opens the whisper edit box through here.
+	if SI_Global and SI_Global.WarnIgnoredPlayers then
+		warnIgnoredPlayer(name)
+	end
+	return SI_ChatFrame_SendTell_Old(name, chatFrame)
 end
 
 SI_UnitPopup_ShowMenu_New = function(dropdownMenu, which, unit, name, userData)
