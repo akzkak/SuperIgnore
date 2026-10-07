@@ -42,5 +42,5 @@ Toggles an entry; with **Ask** selected, adding a player opens the popup.
 Matches [pfUI](https://github.com/brues-code/pfUI) when its SuperIgnore skin is enabled, including class-colored hover highlights. Supports WIM and WhisperFu.
 
 ## Preview
-<img width="802" height="581" alt="WoW_26-09-26 (12)" src="https://github.com/user-attachments/assets/cd64350d-f74d-4f7b-ab73-cd50d38cc39f" />
-<img width="802" height="581" alt="WoW_26-09-26 (11)" src="https://github.com/user-attachments/assets/98b788bf-bd36-41a6-8e46-d21b3a045140" />
+<img width="761" height="592" alt="WoW_07-10-26" src="https://github.com/user-attachments/assets/26beb9dc-00e5-4844-b6b0-76f0fbe92fdf" />
+<img width="761" height="592" alt="WoW_07-10-26 (2)" src="https://github.com/user-attachments/assets/e4c91991-03fc-42ab-8698-dafa26be6138" />
