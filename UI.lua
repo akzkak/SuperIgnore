@@ -76,6 +76,7 @@ local skinActivate = function()
 	for _, w in pairs(SI_SkinWidgets) do
 		skinApply(w)
 	end
+	if SI_OptionsFrame then SI_OptionsFrameUpdateWidth() end
 	if IgnoreListFrame:IsVisible() then SI_SkinPlaceShowButton(SI_OpenButton) end
 end
 
@@ -111,8 +112,8 @@ SI_FrameCreateFrame = function(name, width, parent, x, y)
 	f:SetWidth(width)
 	f:SetBackdrop({
 		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background", tile = true, tileSize = 32,
-		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-		insets = {left = 11, right = 12, top = 12, bottom = 11},
+		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16,
+		insets = {left = 4, right = 4, top = 4, bottom = 4},
 	})
 	f:SetPoint("TOPLEFT", parent, "TOPRIGHT", x, y)
 	f:Hide()
@@ -302,7 +303,7 @@ end
 
 -- A mod's row (checkbox, tooltip, Edit button) in the options panel
 SI_CreateModUI = function(index, mod)
-	local f = SI_OptionsFrame
+	local f = SI_OptionsContentFrame
 
 	if index == 1 then
 		SI_OptionsFramePad = SI_OptionsFramePad - 5
@@ -335,7 +336,7 @@ SI_CreateModUI = function(index, mod)
 	end
 
 	if mod.CreateUI then
-		mod.CreateUI(f)
+		mod.CreateUI(SI_OptionsFrame)
 	end
 
 	if mod.OnEdit then
@@ -944,7 +945,9 @@ SI_CreateOptionsFrame = function()
 
 	-- Height set at function end
 	SI_OptionsFrame = SI_FrameCreateFrame("SI_OptionsFrame", 185, IgnoreListFrame, -34, -7)
-	local f = SI_OptionsFrame
+	-- Keep content clear of Classic's thin panel border.
+	SI_OptionsContentFrame = CreateFrame("Frame", "SI_OptionsContentFrame", SI_OptionsFrame)
+	local f = SI_OptionsContentFrame
 
 	local pad = 0
 
@@ -1040,8 +1043,8 @@ SI_CreateOptionsFrame = function()
 	SI_Skin("dropdown", dd)
 
 	SI_OptionsFramePad = pad - 35
-	SI_OptionsFrameUpdateHeight()
-	f:SetScript("OnShow", SI_OptionsFrameUpdateWidth)
+	SI_OptionsFrameUpdateWidth()
+	SI_OptionsFrame:SetScript("OnShow", SI_OptionsFrameUpdateWidth)
 end
 
 -- Option labels and the extra space each row needs to their right
@@ -1053,16 +1056,22 @@ end
 
 -- Fits the frame to its widest row, so labels never wrap (font depends on pfUI)
 SI_OptionsFrameUpdateWidth = function()
+	local inset = SI_PF and 0 or 4
+	SI_OptionsContentFrame:ClearAllPoints()
+	SI_OptionsContentFrame:SetPoint("TOPLEFT", SI_OptionsFrame, "TOPLEFT", inset, -inset)
+	SI_OptionsContentFrame:SetPoint("BOTTOMRIGHT", SI_OptionsFrame, "BOTTOMRIGHT", -inset, inset)
 	local width = 185
 	for _, l in pairs(SI_OptionsFrameLabels) do
 		-- checkbox offset + checkbox + label + row extra + right margin
 		width = math.max(width, 15 + 20 + l[1]:GetStringWidth() + l[2] + 20)
 	end
-	SI_OptionsFrame:SetWidth(math.ceil(width))
+	SI_OptionsFrame:SetWidth(math.ceil(width) + 2 * inset)
+	SI_OptionsFrameUpdateHeight()
 end
 
 SI_OptionsFrameUpdateHeight = function()
-	SI_OptionsFrame:SetHeight(28 + (- SI_OptionsFramePad))
+	local inset = SI_PF and 0 or 4
+	SI_OptionsFrame:SetHeight(28 + (- SI_OptionsFramePad) + 2 * inset)
 end
 
 SI_CreateLogFrame = function()
